@@ -1,12 +1,9 @@
 const { response, request } = require('express');
 const bcryptjs = require('bcryptjs');
 
-
-const path = require('path');
-const fs   = require('fs');
-const cloudinary = require('cloudinary').v2
-cloudinary.config( process.env.CLOUDINARY_URL );
-
+//Para Crear usuario con google
+const { OAuth2Client } = require('google-auth-library');
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID); // Pon tu client ID de Google
 
 const Usuario = require('../models/usuario');
 
@@ -34,22 +31,12 @@ const usuariosGet = async(req = request, res = response) => {
 const usuariosPost = async(req, res = response) => {
     
     const { nombre, correo, password, rol } = req.body;
-
-
-    if (req.files)
-    {
-        const { tempFilePath } = req.files.archivo
-        const { secure_url } = await cloudinary.uploader.upload( tempFilePath );
-        img = secure_url;
-    }
     
     const usuario = new Usuario({ nombre, correo, password, rol });
-
 
     // Encriptar la contraseña
     const salt = bcryptjs.genSaltSync();
     usuario.password = bcryptjs.hashSync( password, salt );
-
 
     // Guardar en BD
     await usuario.save();
@@ -59,61 +46,51 @@ const usuariosPost = async(req, res = response) => {
     });
 }
 
-//Actualizar Usuario
-const usuariosPut = async(req, res = response) => {
+//Crear Usuario con goole
+const usuariosGooglePost = async(req, res = response) => {
+    const { id_token } = req.body;
 
-    const { id } = req.params;
-    const { _id, password, google, correo, ...resto } = req.body;
+    try {
+        // Verificar token con Google
+        const ticket = await client.verifyIdToken({
+            idToken: id_token,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        });
 
-    modelo = await Usuario.findById(id);
+        const { name, email, picture } = ticket.getPayload();
 
-    if ( modelo.img ) {
-        const nombreArr = modelo.img.split('/');
-        const nombre    = nombreArr[ nombreArr.length - 1 ];
-        const [ public_id ] = nombre.split('.');
-        cloudinary.uploader.destroy( public_id );
+        // Buscar si el usuario ya existe
+        let usuario = await Usuario.findOne({ correo: email });
+
+        if (!usuario) {
+            // Crear usuario nuevo
+            usuario = new Usuario({
+                nombre: name,
+                correo: email,
+                password: ':P', // placeholder porque Google no envía password
+                img: picture,
+                google: true
+            });
+
+            await usuario.save();
+        }
+
+        res.json({
+            msg: 'Usuario autenticado con Google',
+            usuario
+        });
+
+    } catch (error) {
+        return res.status(400).json({
+            msg: 'Token de Google no válido',
+            error
+        });
     }
-
-    const { tempFilePath } = req.files.archivo
-    const { secure_url } = await cloudinary.uploader.upload( tempFilePath );
-    modelo.img = secure_url;
-
-    await modelo.save();
-
-    if ( password ) {
-        // Encriptar la contraseña
-        const salt = bcryptjs.genSaltSync();
-        resto.password = bcryptjs.hashSync( password, salt );
-    }
-
-    const usuario = await Usuario.findByIdAndUpdate( id, resto );
-
-    res.json(usuario);
-    
 }
-
-const usuariosPatch = (req, res = response) => {
-    res.json({
-        msg: 'patch API - usuariosPatch'
-    });
-}
-
-const usuariosDelete = async(req, res = response) => {
-
-    const { id } = req.params;
-    const usuario = await Usuario.findByIdAndUpdate( id, { estado: false } );
-
-    
-    res.json(usuario);
-}
-
 
 
 
 module.exports = {
     usuariosGet,
     usuariosPost,
-    usuariosPut,
-    usuariosPatch,
-    usuariosDelete,
 }

@@ -6,6 +6,13 @@ class Server {
   constructor() {
     this.app = express();
     this.port = process.env.PORT || 3000;
+
+    this.paths = {
+            home:             '/home',
+            usuarios:         '/api/usuarios',
+        }
+
+
     this.connectDB();
     this.middlewares();
     this.routes();
@@ -28,7 +35,9 @@ class Server {
     this.app.get('/', (req, res) => {
       res.json({ msg: 'API funcionando 🚀' });
     });
+    this.app.use( this.paths.usuarios, require('../routes/usuarios'));
   }
+
 
   listen() {
     this.app.listen(this.port, () => {
