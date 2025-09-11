@@ -30,10 +30,19 @@ class Server {
 
   middlewares() {
     // Habilitar CORS
-    this.app.use(cors({
-      origin: 'http://localhost:5173', // tu frontend
-      credentials: true
-    }));
+    this.app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "http://localhost:5173");
+    res.header(
+      "Access-Control-Allow-Headers",
+      "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+    );
+    res.header("Access-Control-Allow-Credentials", "true");
+
+    if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+    next();
+  });
 
     // Parsear JSON
     this.app.use(express.json());

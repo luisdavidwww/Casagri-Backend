@@ -32,28 +32,47 @@ const usuariosGet = async(req = request, res = response) => {
 // ---------------------
 // CREAR USUARIOS
 // ---------------------
-const usuariosPost = async(req, res = response) => {
-    
-    const { nombre, correo, password, rol } = req.body;
-    
-    const usuario = new Usuario({ nombre, correo, password, rol });
 
-    // Encriptar la contraseña
-    const salt = bcryptjs.genSaltSync();
-    usuario.password = bcryptjs.hashSync( password, salt );
+const usuariosPost = async (req, res = response) => {
 
-    // Guardar en BD
-    await usuario.save();
+  const Authorization = req.header('Authorization');
 
-    res.json({
-        usuario
+  // Validar el ServicePassword
+  if (Authorization !== process.env.SECRETORPRIVATEKEY) {
+    return res.status(403).json({
+      msg: 'Acceso denegado: ServicePassword inválido'
     });
-}
+  }
+
+  const { nombre, correo, password, rol } = req.body;
+
+  const usuario = new Usuario({ nombre, correo, password, rol });
+
+  const salt = bcryptjs.genSaltSync();
+  usuario.password = bcryptjs.hashSync(password, salt);
+
+  await usuario.save();
+
+  res.json({
+    usuario
+  });
+};
+
 
 // ---------------------
 // CREAR USUARIOS CON GOOGLE
 // ---------------------
 const usuariosGooglePost = async(req, res = response) => {
+
+    const Authorization = req.header('Authorization');
+
+  // Validar el ServicePassword
+  if (Authorization !== process.env.SECRETORPRIVATEKEY) {
+    return res.status(403).json({
+      msg: 'Acceso denegado: ServicePassword inválido'
+    });
+  }
+
     const { id_token } = req.body;
 
     console.log("ID Token recibido del cliente:", id_token);
@@ -71,22 +90,29 @@ const usuariosGooglePost = async(req, res = response) => {
         let usuario = await Usuario.findOne({ correo: email });
 
         if (!usuario) {
-            // Crear usuario nuevo
             usuario = new Usuario({
                 nombre: name,
                 correo: email,
-                password: ':P', // placeholder porque Google no envía password
+                password: ':P',
                 img: picture,
                 google: true
             });
 
             await usuario.save();
-        }
 
-        res.json({
-            msg: 'Usuario autenticado con Google',
+            return res.json({
+                msg: 'Usuario creado exitosamente con Google',
+                usuario
+            });
+            }
+
+            // Si ya existe, simplemente lo devuelve
+            return res.json({
+            msg: 'Usuario ya registrado, autenticado con Google',
             usuario
-        });
+            });
+
+
 
     } catch (error) {
         return res.status(400).json({
@@ -97,9 +123,18 @@ const usuariosGooglePost = async(req, res = response) => {
 }
 
 // ---------------------
-// CREAR USUARIOS CON GOOGLE
+// ELIMINAR USUARIOS
 // ---------------------
 const usuariosDelete = async(req, res = response) => {
+
+    const Authorization = req.header('Authorization');
+
+  // Validar el ServicePassword
+  if (Authorization !== process.env.SECRETORPRIVATEKEY) {
+    return res.status(403).json({
+      msg: 'Acceso denegado: ServicePassword inválido'
+    });
+  }
 
     const { id } = req.params;
     const usuario = await Usuario.findByIdAndUpdate( id, { estado: false } );

@@ -9,6 +9,15 @@ const { googleVerify } = require('../helpers/google-verify');
 
 const login = async(req, res = response) => {
 
+    const Authorization = req.header('Authorization');
+
+    // Validar el ServicePassword
+    if (Authorization !== process.env.SECRETORPRIVATEKEY) {
+        return res.status(403).json({
+        msg: 'Acceso denegado: ServicePassword inválido'
+        });
+    }
+
     const { correo, password } = req.body;
 
     try {
@@ -55,6 +64,15 @@ const login = async(req, res = response) => {
 
 
 const googleSignin = async(req, res = response) => {
+
+    const Authorization = req.header('Authorization');
+
+    // Validar el ServicePassword
+    if (Authorization !== process.env.SECRETORPRIVATEKEY) {
+        return res.status(403).json({
+        msg: 'Acceso denegado: ServicePassword inválido'
+        });
+    }
 
     const { id_token } = req.body;
     
