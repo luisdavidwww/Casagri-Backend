@@ -1,5 +1,5 @@
 const { response, request } = require('express');
-const bcryptjs = require('bcryptjs');
+const bcryptjs = require('bcryptjs');  // Validar datos de entrada
 
 //Para Crear usuario con google
 const { OAuth2Client } = require('google-auth-library');
@@ -8,7 +8,9 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID); // Pon tu client 
 const Usuario = require('../models/usuario');
 
 
-//Obtener Usuarios
+// ---------------------
+// OBTENER USUARIOS
+// ---------------------
 const usuariosGet = async(req = request, res = response) => {
 
     const { limite = 5, desde = 0 } = req.query;
@@ -27,7 +29,9 @@ const usuariosGet = async(req = request, res = response) => {
     });
 }
 
-//Crear Usuarios
+// ---------------------
+// CREAR USUARIOS
+// ---------------------
 const usuariosPost = async(req, res = response) => {
     
     const { nombre, correo, password, rol } = req.body;
@@ -46,9 +50,13 @@ const usuariosPost = async(req, res = response) => {
     });
 }
 
-//Crear Usuario con goole
+// ---------------------
+// CREAR USUARIOS CON GOOGLE
+// ---------------------
 const usuariosGooglePost = async(req, res = response) => {
     const { id_token } = req.body;
+
+    console.log("ID Token recibido del cliente:", id_token);
 
     try {
         // Verificar token con Google
@@ -88,9 +96,22 @@ const usuariosGooglePost = async(req, res = response) => {
     }
 }
 
+// ---------------------
+// CREAR USUARIOS CON GOOGLE
+// ---------------------
+const usuariosDelete = async(req, res = response) => {
+
+    const { id } = req.params;
+    const usuario = await Usuario.findByIdAndUpdate( id, { estado: false } );
+
+    
+    res.json(usuario);
+}
 
 
 module.exports = {
     usuariosGet,
     usuariosPost,
+    usuariosGooglePost,
+    usuariosDelete,
 }
