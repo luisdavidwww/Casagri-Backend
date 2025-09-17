@@ -12,6 +12,7 @@ class Server {
       home: '/home',
       usuarios: '/api/usuarios',
       auth: '/api/auth',
+      productos: '/api/productos',
     };
 
     this.connectDB();
@@ -23,7 +24,8 @@ class Server {
     try {
       await mongoose.connect(process.env.MONGODB_CNN);
       console.log('MongoDB conectado ✅');
-    } catch (error) {
+    } 
+    catch (error) {
       console.error('Error conectando a MongoDB ❌', error);
     }
   }
@@ -31,7 +33,7 @@ class Server {
   middlewares() {
     // Habilitar CORS
     this.app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "http://localhost:5173");
+    res.header("Access-Control-Allow-Origin", "http://localhost:5173", "http://casagriprueba.casagri-group.com");
     res.header(
       "Access-Control-Allow-Headers",
       "Origin, X-Requested-With, Content-Type, Accept, Authorization"
@@ -52,9 +54,10 @@ class Server {
     this.app.get('/', (req, res) => {
       res.json({ msg: 'API funcionando 🚀' });
     });
-
+    this.app.use(this.paths.home, require('../routes/home'));
     this.app.use(this.paths.usuarios, require('../routes/usuarios'));
     this.app.use(this.paths.auth, require('../routes/auth'));
+    this.app.use(this.paths.productos, require('../routes/productos'));
   }
 
   listen() {
