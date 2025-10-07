@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { crearProductosDesdeCasagri, obtenerProductos, obtenerProductosPorCategoriaNombre } = require('../controllers/productos'); // Ajusta la ruta crearCategoriasDesdeCasagri
+const { crearProductosDesdeCasagri, obtenerProductos, obtenerProductosPorCategoriaNombre, obtenerSubcategoriasPorNivel, obtenerProductosPECUARIA } = require('../controllers/productos'); // Ajusta la ruta crearCategoriasDesdeCasagri
 const router = Router();
 
 /**
@@ -16,8 +16,10 @@ router.get('/sync', async (req, res) => {
   }
 });
 
-router.get('/BuscarProdCategoria/:nombre', obtenerProductosPorCategoriaNombre);
+router.get('/BuscarProdCategoria/:nombre', obtenerProductosPorCategoriaNombre);obtenerProductosPECUARIA
+router.get('/Pecuaria', obtenerProductosPECUARIA);
 
+router.get('/BuscarCategoria/:nombre', obtenerSubcategoriasPorNivel);
 
 
 // Obtener todos los productos

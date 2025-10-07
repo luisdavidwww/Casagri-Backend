@@ -18,7 +18,7 @@ router.get('/syc', async (req, res) => {
 });
 
 
-router.get('/todas', obtenerProductosPorCategoriaNombre );
+router.get('/todas', obtenerCategorias );
 
 
 router.get('/:nombre', obtenerProductosPorCategoriaNombre );

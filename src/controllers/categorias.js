@@ -173,22 +173,35 @@ const obtenerProductosPorCategoriaNombre = async (req, res) => {
 };
 
 
-
 const obtenerCategorias = async (req, res = response) => {
   try {
-    // Puedes agregar filtros o paginación más adelante
-    const categorias = await Categoria.find();
+    const categorias = await Categoria.find({
+      Nivel: { $in: [1, 2, 3, 4] }
+    }).sort({ Nivel: 1 });
+
+    // Eliminar duplicados por Nombre
+    const categoriasUnicas = [];
+    const nombresVistos = new Set();
+
+    for (const cat of categorias) {
+      if (!nombresVistos.has(cat.Nombre)) {
+        nombresVistos.add(cat.Nombre);
+        categoriasUnicas.push(cat);
+      }
+    }
 
     res.json({
-      total: Categoria.length,
-      categorias
+      total: categoriasUnicas.length,
+      categorias: categoriasUnicas
     });
   } catch (error) {
-    console.error('Error al obtener las categorias:', error.message);
+    console.error('Error al obtener las categorías:', error.message);
     res.status(500).json({
-      msg: 'Error al obtener los categorias'
+      msg: 'Error al obtener las categorías'
     });
   }
 };
+
+
 
 module.exports = { crearCategoriasDesdeCasagri, obtenerProductosPorCategoriaNombre, obtenerCategorias };

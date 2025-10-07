@@ -67,7 +67,7 @@ const crearProductosDesdeCasagri = async () => {
 };
 
 // Obtener productos por nombre de categoría (paginado + filtros)
-const obtenerProductosPorCategoriaNombre = async (req, res) => {
+const obtenerProductosPorCategoriaNombre= async (req, res) => {
   try {
     const { page, limit, orderBy, marca, componente } = req.query;
     const pageNumber = parseInt(page) || 1;
@@ -195,8 +195,92 @@ const obtenerProductosPorCategoriaNombre = async (req, res) => {
   }
 };
 
+
 // Obtener productos por nombre de categoría (paginado + filtros)
-const obtenerProductosPorCategoriaNombreOld = async (req, res) => {
+const obtenerProductosPECUARIA = async (req, res) => {
+  try {
+    const { page, limit, orderBy, marca, componente } = req.query;
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 16;
+    const startIndex = (pageNumber - 1) * limitNumber;
+
+    // 1. Buscar categorías relevantes
+    const categorias = await Categoria.find({
+      Nombre: { $in: ["MEDICINA VETERINARIA", "GANADERIA", "MASCOTAS"] }
+    });
+    
+
+    if (!categorias || categorias.length === 0) {
+      return res.status(404).json({ msg: "Categorías no encontradas" });
+    }
+
+    const categoriaIds = categorias.map(cat => cat.Id);
+
+    // 2. Construcción de filtros
+    const filters = {
+      $or: [
+        { Categorizacion1Id: { $in: categoriaIds } },
+        { Categorizacion2Id: { $in: categoriaIds } },
+        { Categorizacion3Id: { $in: categoriaIds } },
+        { Categorizacion4Id: { $in: categoriaIds } },
+        { Categorizacion5Id: { $in: categoriaIds } },
+      ],
+    };
+
+    if (marca && marca !== "si" && marca !== "null") {
+      filters.Marca = marca;
+    }
+    if (marca === "null") {
+      filters.Marca = { $in: [null, ""] };
+    }
+
+    if (componente && componente !== "null") {
+      filters.Etiquetas = componente;
+    }
+    if (componente === "null") {
+      filters.Etiquetas = { $in: [null, 0] };
+    }
+
+    // 3. Ordenamiento dinámico
+    let sorting = { Nombre: 1 };
+    if (orderBy === "desc") sorting = { Nombre: -1 };
+    if (orderBy === "marca") sorting = { Marca: 1 };
+
+    // 4. Consultas en paralelo
+    const [total, productos] = await Promise.all([
+      Producto.countDocuments(filters),
+      Producto.find(filters)
+        .select("Id IdApi Codigo Nombre Nombre_interno Descripcion Categorizacion1Id Categorizacion2Id Categorizacion3Id Categorizacion4Id Categorizacion5Id StockActual ImagenUrl Etiquetas Marca")
+        .sort(sorting)
+        .skip(startIndex)
+        .limit(limitNumber)
+    ]);
+
+    // 5. Marcas y componentes
+    const marcas = await Producto.distinct("Marca", { $or: filters.$or });
+    const componentes = await Producto.distinct("Etiquetas", { $or: filters.$or });
+
+    // 6. Total de páginas
+    const totalPages = Math.ceil(total / limitNumber);
+
+    // 7. Respuesta
+    res.status(200).json({
+      //categorias: categorias.map(cat => ({ Id: cat.Id, Nombre: cat.Nombre })),
+      total,
+      totalPages,
+      currentPage: pageNumber,
+      productos,
+      marcas: marcas.map(m => ({ Marca: m })),
+      componentes: componentes.map(c => ({ Etiquetas: c })),
+    });
+  } catch (error) {
+    console.error("Error al obtener productos PECUARIA:", error.message);
+    res.status(500).json({ msg: "Error en el servidor" });
+  }
+};
+
+// Obtener productos por nombre de categoría (paginado + filtros)
+const obtenerProductosPorCategoriaNombreOld  = async (req, res) => {
   try {
     const { page, limit, orderBy, marca, componente } = req.query;
     const pageNumber = parseInt(page) || 1;
@@ -374,5 +458,75 @@ const obtenerProductos = async (req, res = response) => {
 };
 
 
+const obtenerSubcategoriasPorNivel = async (req, res) => {
+  try {
+    const { nombre } = req.params;
 
-module.exports = { crearProductosDesdeCasagri, obtenerProductos, obtenerProductosPorCategoriaNombre };
+    // 1. Buscar la categoría principal
+    const categoriaPrincipal = await Categoria.findOne({ Nombre: nombre });
+    if (!categoriaPrincipal) {
+      return res.status(404).json({ msg: "Categoría no encontrada" });
+    }
+
+    const categoriaId = categoriaPrincipal.Id;
+
+    // 2. Buscar productos relacionados con esa categoría en cualquier nivel
+    const productos = await Producto.find({
+      $or: [
+        { Categorizacion1Id: categoriaId },
+        { Categorizacion2Id: categoriaId },
+        { Categorizacion3Id: categoriaId },
+        { Categorizacion4Id: categoriaId },
+        { Categorizacion5Id: categoriaId },
+      ],
+    });
+
+    // 3. Extraer IDs únicos por nivel
+    const niveles = {
+      Categorizacion1Id: new Set(),
+      Categorizacion2Id: new Set(),
+      Categorizacion3Id: new Set(),
+      Categorizacion4Id: new Set(),
+      Categorizacion5Id: new Set(),
+    };
+
+    productos.forEach(prod => {
+      Object.keys(niveles).forEach(nivel => {
+        const id = prod[nivel];
+        if (id && id !== 0 && id !== categoriaId) {
+          niveles[nivel].add(id);
+        }
+      });
+    });
+
+    // 4. Buscar nombres de subcategorías por nivel
+    const resultado = {};
+
+    for (const [nivel, idSet] of Object.entries(niveles)) {
+      const ids = Array.from(idSet);
+      const subcategorias = await Categoria.find({ Id: { $in: ids } }).sort({ Nombre: 1 });
+      resultado[nivel] = subcategorias.map(cat => ({
+        Id: cat.Id,
+        Nombre: cat.Nombre,
+        Nivel: cat.Nivel,
+      }));
+    }
+
+    // 5. Respuesta
+    res.status(200).json({
+      categoriaPrincipal: {
+        Id: categoriaPrincipal.Id,
+        Nombre: categoriaPrincipal.Nombre,
+        Nivel: categoriaPrincipal.Nivel,
+      },
+      subcategorias: resultado,
+    });
+  } catch (error) {
+    console.error("Error al obtener subcategorías:", error.message);
+    res.status(500).json({ msg: "Error en el servidor" });
+  }
+};
+
+
+
+module.exports = { crearProductosDesdeCasagri, obtenerProductos, obtenerProductosPorCategoriaNombre, obtenerSubcategoriasPorNivel, obtenerProductosPECUARIA };
