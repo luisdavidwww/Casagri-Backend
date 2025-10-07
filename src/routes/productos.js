@@ -1,6 +1,5 @@
 const { Router } = require('express');
-const { crearProductosDesdeCasagri, obtenerProductos } = require('../controllers/productos'); // Ajusta la ruta crearCategoriasDesdeCasagri
-const { crearCategoriasDesdeCasagri } = require('../controllers/categorias'); // Ajusta la ruta 
+const { crearProductosDesdeCasagri, obtenerProductos, obtenerProductosPorCategoriaNombre } = require('../controllers/productos'); // Ajusta la ruta crearCategoriasDesdeCasagri
 const router = Router();
 
 /**
@@ -17,15 +16,7 @@ router.get('/sync', async (req, res) => {
   }
 });
 
-router.get('/categorias/syc', async (req, res) => {
-  try {
-    await crearCategoriasDesdeCasagri(); // Ejecuta el método que obtiene los productos y los guarda en MongoDB
-    res.status(200).json({ msg: 'Productos sincronizados correctamente ✅' });
-  } catch (error) {
-    console.error('Error al sincronizar productos:', error);
-    res.status(500).json({ msg: 'Error al sincronizar productos', error: error.message });
-  }
-});
+router.get('/BuscarProdCategoria/:nombre', obtenerProductosPorCategoriaNombre);
 
 
 

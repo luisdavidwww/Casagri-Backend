@@ -173,4 +173,22 @@ const obtenerProductosPorCategoriaNombre = async (req, res) => {
 };
 
 
-module.exports = { crearCategoriasDesdeCasagri };
+
+const obtenerCategorias = async (req, res = response) => {
+  try {
+    // Puedes agregar filtros o paginación más adelante
+    const categorias = await Categoria.find();
+
+    res.json({
+      total: Categoria.length,
+      categorias
+    });
+  } catch (error) {
+    console.error('Error al obtener las categorias:', error.message);
+    res.status(500).json({
+      msg: 'Error al obtener los categorias'
+    });
+  }
+};
+
+module.exports = { crearCategoriasDesdeCasagri, obtenerProductosPorCategoriaNombre, obtenerCategorias };

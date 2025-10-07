@@ -1,5 +1,6 @@
 const axios = require('axios');
 const Producto = require('../models/producto'); // Tu modelo actualizado
+const Categoria = require('../models/Categoria'); // Tu modelo actualizado
 
 // Crear todos los productos desde el endpoint externo
 const crearProductosDesdeCasagri = async () => {
@@ -65,8 +66,296 @@ const crearProductosDesdeCasagri = async () => {
   }
 };
 
+// Obtener productos por nombre de categoría (paginado + filtros)
+const obtenerProductosPorCategoriaNombre = async (req, res) => {
+  try {
+    const { page, limit, orderBy, marca, componente } = req.query;
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 16;
+
+    const { nombre } = req.params; // ej: "MEDICINA VETERINARIA"
+
+    // ======================
+    // 1. Buscar la categoría
+    // ======================
+    const categoria = await Categoria.findOne({ Nombre: nombre });
+
+    if (!categoria) {
+      return res.status(404).json({ msg: "Categoría no encontrada" });
+    }
+
+    const categoriaId = categoria.Id;
+
+    // ======================
+    // 2. Índice inicial
+    // ======================
+    const startIndex = (pageNumber - 1) * limitNumber;
+
+    // ======================
+    // 3. Ordenamiento dinámico
+    // ======================
+    let sorting = { Nombre: 1 }; // ascendente por defecto
+    if (orderBy === "desc") {
+      sorting = { Nombre: -1 };
+    }
+    if (orderBy === "marca") {
+      sorting = { Marca: 1 };
+    }
+
+    // ======================
+    // 4. Construcción de filtros
+    // ======================
+    let filters = {
+      $or: [
+        { Categorizacion1Id: categoriaId },
+        { Categorizacion2Id: categoriaId },
+        { Categorizacion3Id: categoriaId },
+        { Categorizacion4Id: categoriaId },
+        { Categorizacion5Id: categoriaId },
+      ],
+    };
+
+    // Filtro por marca
+    if (marca && marca !== "si" && marca !== "null") {
+      filters.Marca = marca;
+    }
+    if (marca === "null") {
+      filters.Marca = { $in: [null, ""] };
+    }
+
+    // Filtro por componente (ejemplo usando Categorizacion4Id)
+    if (componente && componente !== "null") {
+      filters.Etiquetas = componente;
+    }
+    if (componente === "null") {
+      filters.Etiquetas = { $in: [null, 0] };
+    }
+
+    // ======================
+    // 5. Consultas en paralelo
+    // ======================
+    const [total, productos] = await Promise.all([
+      Producto.countDocuments(filters),
+      Producto.find(filters)
+        .select("Id IdApi Codigo Nombre Nombre_interno Descripcion Categorizacion1Id Categorizacion2Id Categorizacion3Id Categorizacion4Id Categorizacion5Id StockActual ImagenUrl Etiquetas Marca")
+        .sort(sorting)
+        .skip(startIndex)
+        .limit(limitNumber)
+
+    ]);
+
+    // ======================
+    // 6. Distinct marcas
+    // ======================
+    const marcas = await Producto.distinct("Marca", {
+      $or: [
+        { Categorizacion1Id: categoriaId },
+        { Categorizacion2Id: categoriaId },
+        { Categorizacion3Id: categoriaId },
+        { Categorizacion4Id: categoriaId },
+        { Categorizacion5Id: categoriaId },
+      ],
+    });
+    const marcasArray = marcas.map((m) => ({ Marca: m }));
+
+    // ======================
+    // 7. Distinct componentes (cat4)
+    // ======================
+    const componentes = await Producto.distinct("Etiquetas", {
+      $or: [
+        { Categorizacion1Id: categoriaId },
+        { Categorizacion2Id: categoriaId },
+        { Categorizacion3Id: categoriaId },
+        { Categorizacion4Id: categoriaId },
+        { Categorizacion5Id: categoriaId },
+      ],
+    });
+    const componentesArray = componentes.map((c) => ({ Etiquetas: c }));
+
+    // ======================
+    // 8. Total de páginas
+    // ======================
+    const totalPages = Math.ceil(total / limitNumber);
+
+    // ======================
+    // 9. Respuesta
+    // ======================
+    res.status(200).json({
+      categoria: categoria.Nombre,
+      total,
+      totalPages,
+      currentPage: pageNumber,
+      productos,
+      marcas: marcasArray,
+      componentes: componentesArray,
+    });
+  } catch (error) {
+    console.error("Error al obtener productos por categoría:", error.message);
+    res.status(500).json({ msg: "Error en el servidor" });
+  }
+};
+
+// Obtener productos por nombre de categoría (paginado + filtros)
+const obtenerProductosPorCategoriaNombreOld = async (req, res) => {
+  try {
+    const { page, limit, orderBy, marca, componente } = req.query;
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 16;
+
+    const { nombre } = req.params; // ej: "MEDICINA VETERINARIA"
+
+    // ======================
+    // 1. Buscar la categoría
+    // ======================
+    const categoria = await Categoria.findOne({ Nombre: nombre });
+
+    if (!categoria) {
+      return res.status(404).json({ msg: "Categoría no encontrada" });
+    }
+
+    const categoriaId = categoria.Id;
+
+    // ======================
+    // 2. Índice inicial
+    // ======================
+    const startIndex = (pageNumber - 1) * limitNumber;
+
+    // ======================
+    // 3. Ordenamiento dinámico
+    // ======================
+    let sorting = { Nombre: 1 }; // ascendente por defecto
+    if (orderBy === "desc") {
+      sorting = { Nombre: -1 };
+    }
+    if (orderBy === "marca") {
+      sorting = { Marca: 1 };
+    }
+
+    // ======================
+    // 4. Construcción de filtros
+    // ======================
+    let filters = {
+      $or: [
+        { Categorizacion1Id: categoriaId },
+        { Categorizacion2Id: categoriaId },
+        { Categorizacion3Id: categoriaId },
+        { Categorizacion4Id: categoriaId },
+        { Categorizacion5Id: categoriaId },
+      ],
+    };
+
+    // Filtro por marca
+    if (marca && marca !== "si" && marca !== "null") {
+      filters.Marca = marca;
+    }
+    if (marca === "null") {
+      filters.Marca = { $in: [null, ""] };
+    }
+
+    // Filtro por componente (ejemplo usando Categorizacion4Id)
+    if (componente && componente !== "null") {
+      filters.Categorizacion4Id = parseInt(componente);
+    }
+    if (componente === "null") {
+      filters.Categorizacion4Id = { $in: [null, 0] };
+    }
+
+    // ======================
+    // 5. Consultas en paralelo
+    // ======================
+    const [total, productos] = await Promise.all([
+      Producto.countDocuments(filters),
+      Producto.find(filters)
+        .sort(sorting)
+        .skip(startIndex)
+        .limit(limitNumber),
+    ]);
+
+    // ======================
+    // 5.5. Enriquecer productos con nombres de categorías
+    // ======================
+    const categoriaIdsSet = new Set();
+    productos.forEach(prod => {
+      [
+        prod.Categorizacion1Id,
+        prod.Categorizacion2Id,
+        prod.Categorizacion3Id,
+        prod.Categorizacion4Id,
+        prod.Categorizacion5Id
+      ]
+        .filter(id => id && id !== 0)
+        .forEach(id => categoriaIdsSet.add(id));
+    });
+    const categoriaIds = Array.from(categoriaIdsSet);
+
+    const categoriasRelacionadas = await Categoria.find({ Id: { $in: categoriaIds } });
+    const categoriasMap = {};
+    categoriasRelacionadas.forEach(cat => {
+      categoriasMap[cat.Id] = cat.Nombre;
+    });
+
+    const productosEnriquecidos = productos.map(prod => ({
+      ...prod._doc,
+      Categorizacion1Nombre: categoriasMap[prod.Categorizacion1Id] || null,
+      Categorizacion2Nombre: categoriasMap[prod.Categorizacion2Id] || null,
+      Categorizacion3Nombre: categoriasMap[prod.Categorizacion3Id] || null,
+      Categorizacion4Nombre: categoriasMap[prod.Categorizacion4Id] || null,
+      Categorizacion5Nombre: categoriasMap[prod.Categorizacion5Id] || null,
+    }));
+
+    // ======================
+    // 6. Distinct marcas
+    // ======================
+    const marcas = await Producto.distinct("Marca", {
+      $or: [
+        { Categorizacion1Id: categoriaId },
+        { Categorizacion2Id: categoriaId },
+        { Categorizacion3Id: categoriaId },
+        { Categorizacion4Id: categoriaId },
+        { Categorizacion5Id: categoriaId },
+      ],
+    });
+    const marcasArray = marcas.map((m) => ({ Marca: m }));
+
+    // ======================
+    // 7. Distinct componentes (Etiquetas)
+    // ======================
+    const componentes = await Producto.distinct("Etiquetas", {
+      $or: [
+        { Categorizacion1Id: categoriaId },
+        { Categorizacion2Id: categoriaId },
+        { Categorizacion3Id: categoriaId },
+        { Categorizacion4Id: categoriaId },
+        { Categorizacion5Id: categoriaId },
+      ],
+    });
+    const componentesArray = componentes.map((c) => ({ Etiquetas: c }));
+
+    // ======================
+    // 8. Total de páginas
+    // ======================
+    const totalPages = Math.ceil(total / limitNumber);
+
+    // ======================
+    // 9. Respuesta
+    // ======================
+    res.status(200).json({
+      //categoria: categoria.Nombre,
+      total,
+      totalPages,
+      currentPage: pageNumber,
+      productos: productosEnriquecidos,
+      marcas: marcasArray,
+      componentes: componentesArray,
+    });
+  } catch (error) {
+    console.error("Error al obtener productos por categoría:", error.message);
+    res.status(500).json({ msg: "Error en el servidor" });
+  }
+};
 
 
+//Obtener Todos los Productos Casagri
 const obtenerProductos = async (req, res = response) => {
   try {
     // Puedes agregar filtros o paginación más adelante
@@ -86,4 +375,4 @@ const obtenerProductos = async (req, res = response) => {
 
 
 
-module.exports = { crearProductosDesdeCasagri, obtenerProductos };
+module.exports = { crearProductosDesdeCasagri, obtenerProductos, obtenerProductosPorCategoriaNombre };

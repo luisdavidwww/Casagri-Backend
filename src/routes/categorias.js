@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { crearCategoriasDesdeCasagri } = require('../controllers/categorias'); // Ajusta la ruta 
+const { crearCategoriasDesdeCasagri, obtenerProductosPorCategoriaNombre, obtenerCategorias } = require('../controllers/categorias'); // Ajusta la ruta 
 const router = Router();
 
 /**
@@ -18,8 +18,9 @@ router.get('/syc', async (req, res) => {
 });
 
 
+router.get('/todas', obtenerProductosPorCategoriaNombre );
 
-// Obtener todos los productos
-router.get('/all', obtenerProductos);
+
+router.get('/:nombre', obtenerProductosPorCategoriaNombre );
 
 module.exports = router;
