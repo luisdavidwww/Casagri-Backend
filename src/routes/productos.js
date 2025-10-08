@@ -4,6 +4,7 @@ const {
         crearProductosDesdeCasagri, 
         obtenerProductos,
         obtenerSubcategoriasPorNivel,
+        obtenerProductoPorNombre,
 
         /* ------------------------- GENERAL ----------------------------- */
         obtenerProductosPorCategoriaNombre, 
@@ -37,6 +38,10 @@ router.get('/sync', async (req, res) => {
   }
 });
 
+obtenerProductoPorNombre
+/* ------------------------- GENERAL ----------------------------- */
+router.get('/BuscarProdNombre/:nombre', obtenerProductoPorNombre);
+
 
 /* ------------------------- GENERAL ----------------------------- */
 router.get('/BuscarProdCategoria/:nombre', obtenerProductosPorCategoriaNombre);
@@ -59,6 +64,9 @@ router.get('/MaquinariaAgricola', obtenerProductosMAQUINARIA);
 /* ------------------------- SUBCATEGORIAS ----------------------- */
 router.get('/BuscarCategoria/:nombre', obtenerSubcategoriasPorNivel);
 
+
+/* ----------------- BUSCAR PRODUCTO POR NOMBRE  ----------------- */
+router.get('/Buscar/:nombre', obtenerProductoPorNombre );
 
 // Obtener todos los productos
 router.get('/all', obtenerProductos);

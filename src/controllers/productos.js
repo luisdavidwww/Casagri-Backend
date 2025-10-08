@@ -635,6 +635,88 @@ const obtenerProductosMAQUINARIA = async (req, res) => {
 };
 
 
+
+/* //////////////////////////////////////////////////////////// */
+/* //////////////////////////////////////////////////////////// */
+/* ------------------------ Buscar Pro ------------------------ */
+/* //////////////////////////////////////////////////////////// */
+/* //////////////////////////////////////////////////////////// */
+const obtenerProductoPorNombre = async(req, res = response ) => {
+
+  try {
+    const { page, limit } = req.query;
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 16;
+
+    // Calcula el índice de inicio y la cantidad de elementos a mostrar
+    const startIndex = (pageNumber - 1) * limitNumber;
+
+    //let { nombre } = req.params;
+
+    let { nombre } = req.params;
+
+    // const escapedNombre = nombre.replace(/\s/g, '\\s'); replace(/\s+/g, '-')
+    const escapedNombre = nombre.replace(/\s+/g, '-')
+                                .replace(/%/g, "%25")
+                                .replace(/[ / ]/g, "_");
+
+    const query = {
+      $or: [
+        { Nombre_interno: { $regex: escapedNombre, $options: 'i' } },
+        { cat4: { $regex: escapedNombre, $options: 'i' } },
+        { cat1: { $regex: nombre, $options: 'i' } },
+        { cat2: { $regex: nombre, $options: 'i' } },
+        { Cat3: { $regex: nombre, $options: 'i' } },
+        { cat5: { $regex: nombre, $options: 'i' } },
+      ]
+    };
+
+    const [ total, productos ] = await Promise.all([
+      Producto.find(query).countDocuments(),
+      Producto.find(query)
+                      .select("Id IdApi Codigo Nombre Nombre_interno Descripcion Categorizacion1Id Categorizacion2Id Categorizacion3Id Categorizacion4Id Categorizacion5Id StockActual ImagenUrl Etiquetas Marca")
+                      .sort({ Nombre: 1 }) // Ordena alfabéticamente por el campo "Nombre"
+                      .skip(startIndex)
+                      .limit(limitNumber)
+    ]);
+
+    // Calcula el número total de páginas
+    const totalPages = Math.ceil(total / limitNumber);
+
+    // Extraer marcas únicas
+    const marcas = [...new Set(productos.map(p => p.Marca).filter(Boolean))];
+
+    // Construye el objeto de respuesta con los datos paginados y los metadatos
+    const response = {
+      total,
+      totalPages,
+      currentPage: pageNumber,
+      productos,
+      marcas,
+    };
+
+    res.status(200).json(response);
+  } catch (error) {
+    console.error('Error al obtener los productos paginados:', error.message);
+    res.status(500).json({ error: 'Error al obtener los productos paginados' });
+  }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Obtener productos por nombre de categoría (paginado + filtros)
 const obtenerProductosPorCategoriaNombreOld  = async (req, res) => {
   try {
@@ -796,7 +878,7 @@ const obtenerProductosPorCategoriaNombreOld  = async (req, res) => {
 
 
 //Obtener Todos los Productos Casagri
-const obtenerProductos = async (req, res = response) => {
+const obtenerProductosTodos = async (req, res = response) => {
   try {
     // Puedes agregar filtros o paginación más adelante
     const productos = await Producto.find();
@@ -812,6 +894,77 @@ const obtenerProductos = async (req, res = response) => {
     });
   }
 };
+
+//Obtener Todos los Productos Casagri
+const obtenerProductos = async (req, res) => {
+  try {
+    const { page, limit, orderBy, marca, componente } = req.query;
+    const pageNumber = Math.max(parseInt(page) || 1, 1);
+    const limitNumber = Math.max(parseInt(limit) || 16, 1);
+    const startIndex = (pageNumber - 1) * limitNumber;
+
+    // 1. Buscar todas las categorías
+    const categorias = await Categoria.find({});
+    if (!categorias || categorias.length === 0) {
+      return res.status(404).json({ success: false, msg: "No se encontraron categorías" });
+    }
+
+    const categoriaIds = categorias.map(cat => cat.Id);
+
+    // 2. Construcción de filtros
+    const filters = {
+      $or: [
+        { Categorizacion1Id: { $in: categoriaIds } },
+        { Categorizacion2Id: { $in: categoriaIds } },
+        { Categorizacion3Id: { $in: categoriaIds } },
+        { Categorizacion4Id: { $in: categoriaIds } },
+        { Categorizacion5Id: { $in: categoriaIds } },
+      ],
+      ...(marca && marca !== "si" && marca !== "null" && { Marca: marca }),
+      ...(marca === "null" && { Marca: { $in: [null, ""] } }),
+      ...(componente && componente !== "null" && { Etiquetas: componente }),
+      ...(componente === "null" && { Etiquetas: { $in: [null, 0] } }),
+    };
+
+    // 3. Ordenamiento dinámico
+    let sorting = { Nombre: 1 };
+    if (orderBy === "desc") sorting = { Nombre: -1 };
+    if (orderBy === "marca") sorting = { Marca: 1 };
+
+    // 4. Consultas en paralelo
+    const [total, productos] = await Promise.all([
+      Producto.countDocuments(filters),
+      Producto.find(filters)
+        .select("Id IdApi Codigo Nombre Nombre_interno Descripcion Categorizacion1Id Categorizacion2Id Categorizacion3Id Categorizacion4Id Categorizacion5Id StockActual ImagenUrl Etiquetas Marca")
+        .sort(sorting)
+        .skip(startIndex)
+        .limit(limitNumber)
+    ]);
+
+    // 5. Marcas y componentes únicos
+    const marcas = await Producto.distinct("Marca", { $or: filters.$or });
+    const componentes = await Producto.distinct("Etiquetas", { $or: filters.$or });
+
+    // 6. Total de páginas
+    const totalPages = Math.ceil(total / limitNumber);
+
+    // 7. Respuesta estructurada
+    res.status(200).json({
+      total,
+      totalPages,
+      currentPage: pageNumber,
+      productos,
+      //marcas: marcas.map(m => ({ Marca: m })),
+      //componentes: componentes.map(c => ({ Etiquetas: c }))
+
+    });
+  } catch (error) {
+    console.error("Error al obtener productos por categoría:", error.message);
+    res.status(500).json({ success: false, msg: "Error en el servidor" });
+  }
+};
+
+
 
 
 const obtenerSubcategoriasPorNivel = async (req, res) => {
@@ -889,6 +1042,7 @@ module.exports = {
   crearProductosDesdeCasagri, 
   obtenerProductos,
   obtenerSubcategoriasPorNivel,
+  obtenerProductoPorNombre,
 
   /* ------------------------- GENERAL ----------------------------- */
   obtenerProductosPorCategoriaNombre, 
