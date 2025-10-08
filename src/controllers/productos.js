@@ -195,8 +195,183 @@ const obtenerProductosPorCategoriaNombre= async (req, res) => {
   }
 };
 
+/* //////////////////////////////////////////////////////////// */
+/* //////////////////////////////////////////////////////////// */
+/* ------------------------- AGRO ----------------------------- */
+/* //////////////////////////////////////////////////////////// */
+/* //////////////////////////////////////////////////////////// */
+// FERTILIZANTES
+const obtenerProductosFERTILIZANTES = async (req, res) => {
+  try {
+    const { page, limit, orderBy, marca, componente } = req.query;
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 16;
+    const startIndex = (pageNumber - 1) * limitNumber;
 
-// Obtener productos por nombre de categoría (paginado + filtros)
+    // 1. Buscar categorías relevantes
+    const categorias = await Categoria.find({
+      Nombre: { $in: ["FERTILIZANTES QUIMICOS", "FERTILIZANTES Y SUSTRATOS"] }
+    });
+    
+
+    if (!categorias || categorias.length === 0) {
+      return res.status(404).json({ msg: "Categorías no encontradas" });
+    }
+
+    const categoriaIds = categorias.map(cat => cat.Id);
+
+    // 2. Construcción de filtros
+    const filters = {
+      $or: [
+        { Categorizacion1Id: { $in: categoriaIds } },
+        { Categorizacion2Id: { $in: categoriaIds } },
+        { Categorizacion3Id: { $in: categoriaIds } },
+        { Categorizacion4Id: { $in: categoriaIds } },
+        { Categorizacion5Id: { $in: categoriaIds } },
+      ],
+    };
+
+    if (marca && marca !== "si" && marca !== "null") {
+      filters.Marca = marca;
+    }
+    if (marca === "null") {
+      filters.Marca = { $in: [null, ""] };
+    }
+
+    if (componente && componente !== "null") {
+      filters.Etiquetas = componente;
+    }
+    if (componente === "null") {
+      filters.Etiquetas = { $in: [null, 0] };
+    }
+
+    // 3. Ordenamiento dinámico
+    let sorting = { Nombre: 1 };
+    if (orderBy === "desc") sorting = { Nombre: -1 };
+    if (orderBy === "marca") sorting = { Marca: 1 };
+
+    // 4. Consultas en paralelo
+    const [total, productos] = await Promise.all([
+      Producto.countDocuments(filters),
+      Producto.find(filters)
+        .select("Id IdApi Codigo Nombre Nombre_interno Descripcion Categorizacion1Id Categorizacion2Id Categorizacion3Id Categorizacion4Id Categorizacion5Id StockActual ImagenUrl Etiquetas Marca")
+        .sort(sorting)
+        .skip(startIndex)
+        .limit(limitNumber)
+    ]);
+
+    // 5. Marcas y componentes
+    const marcas = await Producto.distinct("Marca", { $or: filters.$or });
+    const componentes = await Producto.distinct("Etiquetas", { $or: filters.$or });
+
+    // 6. Total de páginas
+    const totalPages = Math.ceil(total / limitNumber);
+
+    // 7. Respuesta
+    res.status(200).json({
+      //categorias: categorias.map(cat => ({ Id: cat.Id, Nombre: cat.Nombre })),
+      total,
+      totalPages,
+      currentPage: pageNumber,
+      productos,
+      marcas: marcas.map(m => ({ Marca: m })),
+      componentes: componentes.map(c => ({ Etiquetas: c })),
+    });
+  } catch (error) {
+    console.error("Error al obtener productos PECUARIA:", error.message);
+    res.status(500).json({ msg: "Error en el servidor" });
+  }
+};
+// OTROSAGRO
+const obtenerProductosOTROSAGRO = async (req, res) => {
+  try {
+    const { page, limit, orderBy, marca, componente } = req.query;
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 16;
+    const startIndex = (pageNumber - 1) * limitNumber;
+
+    // 1. Buscar categorías relevantes
+    const categorias = await Categoria.find({
+      Nombre: { $in: ["RIEGO", "UNIDADES DE ALMACENAMIENTO"] }
+    });
+    
+
+    if (!categorias || categorias.length === 0) {
+      return res.status(404).json({ msg: "Categorías no encontradas" });
+    }
+
+    const categoriaIds = categorias.map(cat => cat.Id);
+
+    // 2. Construcción de filtros
+    const filters = {
+      $or: [
+        { Categorizacion1Id: { $in: categoriaIds } },
+        { Categorizacion2Id: { $in: categoriaIds } },
+        { Categorizacion3Id: { $in: categoriaIds } },
+        { Categorizacion4Id: { $in: categoriaIds } },
+        { Categorizacion5Id: { $in: categoriaIds } },
+      ],
+    };
+
+    if (marca && marca !== "si" && marca !== "null") {
+      filters.Marca = marca;
+    }
+    if (marca === "null") {
+      filters.Marca = { $in: [null, ""] };
+    }
+
+    if (componente && componente !== "null") {
+      filters.Etiquetas = componente;
+    }
+    if (componente === "null") {
+      filters.Etiquetas = { $in: [null, 0] };
+    }
+
+    // 3. Ordenamiento dinámico
+    let sorting = { Nombre: 1 };
+    if (orderBy === "desc") sorting = { Nombre: -1 };
+    if (orderBy === "marca") sorting = { Marca: 1 };
+
+    // 4. Consultas en paralelo
+    const [total, productos] = await Promise.all([
+      Producto.countDocuments(filters),
+      Producto.find(filters)
+        .select("Id IdApi Codigo Nombre Nombre_interno Descripcion Categorizacion1Id Categorizacion2Id Categorizacion3Id Categorizacion4Id Categorizacion5Id StockActual ImagenUrl Etiquetas Marca")
+        .sort(sorting)
+        .skip(startIndex)
+        .limit(limitNumber)
+    ]);
+
+    // 5. Marcas y componentes
+    const marcas = await Producto.distinct("Marca", { $or: filters.$or });
+    const componentes = await Producto.distinct("Etiquetas", { $or: filters.$or });
+
+    // 6. Total de páginas
+    const totalPages = Math.ceil(total / limitNumber);
+
+    // 7. Respuesta
+    res.status(200).json({
+      //categorias: categorias.map(cat => ({ Id: cat.Id, Nombre: cat.Nombre })),
+      total,
+      totalPages,
+      currentPage: pageNumber,
+      productos,
+      marcas: marcas.map(m => ({ Marca: m })),
+      componentes: componentes.map(c => ({ Etiquetas: c })),
+    });
+  } catch (error) {
+    console.error("Error al obtener productos PECUARIA:", error.message);
+    res.status(500).json({ msg: "Error en el servidor" });
+  }
+};
+
+
+
+/* //////////////////////////////////////////////////////////// */
+/* //////////////////////////////////////////////////////////// */
+/* ------------------------ PECUARIA -------------------------- */
+/* //////////////////////////////////////////////////////////// */
+/* //////////////////////////////////////////////////////////// */
 const obtenerProductosPECUARIA = async (req, res) => {
   try {
     const { page, limit, orderBy, marca, componente } = req.query;
@@ -278,6 +453,187 @@ const obtenerProductosPECUARIA = async (req, res) => {
     res.status(500).json({ msg: "Error en el servidor" });
   }
 };
+const obtenerProductosGANADERIA = async (req, res) => {
+  try {
+    const { page, limit, orderBy, marca, componente } = req.query;
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 16;
+    const startIndex = (pageNumber - 1) * limitNumber;
+
+    // 1. Buscar categorías relevantes
+   const categorias = await Categoria.find({
+      $and: [
+        { Nombre: { $in: ["ALIMENTOS ANIMALES DE PRODUCCI","ORDEÑO", "CERCAS", "IMPLEMENTOS PARA ESTABULACION" ] } },
+      ]
+    });
+
+    
+
+    if (!categorias || categorias.length === 0) {
+      return res.status(404).json({ msg: "Categorías no encontradas" });
+    }
+
+    const categoriaIds = categorias.map(cat => cat.Id)
+
+
+    // 2. Construcción de filtros
+    const filters = {
+      $or: [
+        { Categorizacion1Id: { $in: categoriaIds } },
+        { Categorizacion2Id: { $in: categoriaIds } },
+        { Categorizacion3Id: { $in: categoriaIds } },
+        { Categorizacion4Id: { $in: categoriaIds } },
+        { Categorizacion5Id: { $in: categoriaIds } },
+      ],
+    };
+
+
+    if (marca && marca !== "si" && marca !== "null") {
+      filters.Marca = marca;
+    }
+    if (marca === "null") {
+      filters.Marca = { $in: [null, ""] };
+    }
+
+    if (componente && componente !== "null") {
+      filters.Etiquetas = componente;
+    }
+    if (componente === "null") {
+      filters.Etiquetas = { $in: [null, 0] };
+    }
+
+    // 3. Ordenamiento dinámico
+    let sorting = { Nombre: 1 };
+    if (orderBy === "desc") sorting = { Nombre: -1 };
+    if (orderBy === "marca") sorting = { Marca: 1 };
+
+    // 4. Consultas en paralelo
+    const [total, productos] = await Promise.all([
+      Producto.countDocuments(filters),
+      Producto.find(filters)
+        .select("Id IdApi Codigo Nombre Nombre_interno Descripcion Categorizacion1Id Categorizacion2Id Categorizacion3Id Categorizacion4Id Categorizacion5Id StockActual ImagenUrl Etiquetas Marca")
+        .sort(sorting)
+        .skip(startIndex)
+        .limit(limitNumber)
+    ]);
+
+    // 5. Marcas y componentes
+    const marcas = await Producto.distinct("Marca", { $or: filters.$or });
+    const componentes = await Producto.distinct("Etiquetas", { $or: filters.$or });
+
+    // 6. Total de páginas
+    const totalPages = Math.ceil(total / limitNumber);
+
+    // 7. Respuesta
+    res.status(200).json({
+      //categorias: categorias.map(cat => ({ Id: cat.Id, Nombre: cat.Nombre })),
+      total,
+      totalPages,
+      currentPage: pageNumber,
+      productos,
+      marcas: marcas.map(m => ({ Marca: m })),
+      componentes: componentes.map(c => ({ Etiquetas: c })),
+    });
+  } catch (error) {
+    console.error("Error al obtener productos PECUARIA:", error.message);
+    res.status(500).json({ msg: "Error en el servidor" });
+  }
+};
+
+
+
+/* //////////////////////////////////////////////////////////// */
+/* //////////////////////////////////////////////////////////// */
+/* ------------------------ MAQUINARIA ------------------------ */
+/* //////////////////////////////////////////////////////////// */
+/* //////////////////////////////////////////////////////////// */
+const obtenerProductosMAQUINARIA = async (req, res) => {
+  try {
+    const { page, limit, orderBy, marca, componente } = req.query;
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 16;
+    const startIndex = (pageNumber - 1) * limitNumber;
+
+    // 1. Buscar categorías relevantes
+   const categorias = await Categoria.find({
+      $and: [
+        { Nombre: { $in: ["MAQUINAS PARA LA SIEMBRA","MAQUINAS PARA EL ABONO Y FERTI", "MAQUINAS PARA LA PROTECCION Y", "MAQUINARIA PARA LA RECOLECCION", "MAQUINARIA PROCESAMIENTO MATER", "IMPLEMENTOS PARA PREPARACION D" ] } },
+      ]
+    });
+
+    
+
+    if (!categorias || categorias.length === 0) {
+      return res.status(404).json({ msg: "Categorías no encontradas" });
+    }
+
+    const categoriaIds = categorias.map(cat => cat.Id)
+
+
+    // 2. Construcción de filtros
+    const filters = {
+      $or: [
+        { Categorizacion1Id: { $in: categoriaIds } },
+        { Categorizacion2Id: { $in: categoriaIds } },
+        { Categorizacion3Id: { $in: categoriaIds } },
+        { Categorizacion4Id: { $in: categoriaIds } },
+        { Categorizacion5Id: { $in: categoriaIds } },
+      ],
+    };
+
+
+    if (marca && marca !== "si" && marca !== "null") {
+      filters.Marca = marca;
+    }
+    if (marca === "null") {
+      filters.Marca = { $in: [null, ""] };
+    }
+
+    if (componente && componente !== "null") {
+      filters.Etiquetas = componente;
+    }
+    if (componente === "null") {
+      filters.Etiquetas = { $in: [null, 0] };
+    }
+
+    // 3. Ordenamiento dinámico
+    let sorting = { Nombre: 1 };
+    if (orderBy === "desc") sorting = { Nombre: -1 };
+    if (orderBy === "marca") sorting = { Marca: 1 };
+
+    // 4. Consultas en paralelo
+    const [total, productos] = await Promise.all([
+      Producto.countDocuments(filters),
+      Producto.find(filters)
+        .select("Id IdApi Codigo Nombre Nombre_interno Descripcion Categorizacion1Id Categorizacion2Id Categorizacion3Id Categorizacion4Id Categorizacion5Id StockActual ImagenUrl Etiquetas Marca")
+        .sort(sorting)
+        .skip(startIndex)
+        .limit(limitNumber)
+    ]);
+
+    // 5. Marcas y componentes
+    const marcas = await Producto.distinct("Marca", { $or: filters.$or });
+    const componentes = await Producto.distinct("Etiquetas", { $or: filters.$or });
+
+    // 6. Total de páginas
+    const totalPages = Math.ceil(total / limitNumber);
+
+    // 7. Respuesta
+    res.status(200).json({
+      //categorias: categorias.map(cat => ({ Id: cat.Id, Nombre: cat.Nombre })),
+      total,
+      totalPages,
+      currentPage: pageNumber,
+      productos,
+      marcas: marcas.map(m => ({ Marca: m })),
+      componentes: componentes.map(c => ({ Etiquetas: c })),
+    });
+  } catch (error) {
+    console.error("Error al obtener productos PECUARIA:", error.message);
+    res.status(500).json({ msg: "Error en el servidor" });
+  }
+};
+
 
 // Obtener productos por nombre de categoría (paginado + filtros)
 const obtenerProductosPorCategoriaNombreOld  = async (req, res) => {
@@ -529,4 +885,24 @@ const obtenerSubcategoriasPorNivel = async (req, res) => {
 
 
 
-module.exports = { crearProductosDesdeCasagri, obtenerProductos, obtenerProductosPorCategoriaNombre, obtenerSubcategoriasPorNivel, obtenerProductosPECUARIA };
+module.exports = { 
+  crearProductosDesdeCasagri, 
+  obtenerProductos,
+  obtenerSubcategoriasPorNivel,
+
+  /* ------------------------- GENERAL ----------------------------- */
+  obtenerProductosPorCategoriaNombre, 
+
+  /* ------------------------- AGRO -------------------------------- */
+  obtenerProductosFERTILIZANTES,
+  obtenerProductosOTROSAGRO, 
+
+  /* ------------------------- PECUARIA ---------------------------- */
+  obtenerProductosPECUARIA,
+  obtenerProductosGANADERIA,
+
+  /* ------------------------ MAQUINARIA --------------------------- */
+  obtenerProductosMAQUINARIA,
+
+
+  };

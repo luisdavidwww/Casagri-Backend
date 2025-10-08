@@ -1,5 +1,26 @@
 const { Router } = require('express');
-const { crearProductosDesdeCasagri, obtenerProductos, obtenerProductosPorCategoriaNombre, obtenerSubcategoriasPorNivel, obtenerProductosPECUARIA } = require('../controllers/productos'); // Ajusta la ruta crearCategoriasDesdeCasagri
+
+const { 
+        crearProductosDesdeCasagri, 
+        obtenerProductos,
+        obtenerSubcategoriasPorNivel,
+
+        /* ------------------------- GENERAL ----------------------------- */
+        obtenerProductosPorCategoriaNombre, 
+
+        /* ------------------------- AGRO -------------------------------- */
+        obtenerProductosFERTILIZANTES,
+        obtenerProductosOTROSAGRO, 
+
+        /* ------------------------- PECUARIA ---------------------------- */
+        obtenerProductosPECUARIA, 
+        obtenerProductosGANADERIA,
+
+        /* ------------------------ MAQUINARIA --------------------------- */
+        obtenerProductosMAQUINARIA,
+
+         } = require('../controllers/productos'); 
+
 const router = Router();
 
 /**
@@ -16,9 +37,26 @@ router.get('/sync', async (req, res) => {
   }
 });
 
-router.get('/BuscarProdCategoria/:nombre', obtenerProductosPorCategoriaNombre);obtenerProductosPECUARIA
-router.get('/Pecuaria', obtenerProductosPECUARIA);
 
+/* ------------------------- GENERAL ----------------------------- */
+router.get('/BuscarProdCategoria/:nombre', obtenerProductosPorCategoriaNombre);
+
+/* ------------------------- AGRO -------------------------------- */
+router.get('/Fertilizantes', obtenerProductosFERTILIZANTES);
+router.get('/OtrosAgro', obtenerProductosOTROSAGRO);
+
+/* ------------------------- PECUARIA ---------------------------- */
+router.get('/Pecuaria', obtenerProductosPECUARIA);
+router.get('/Ganaderia', obtenerProductosGANADERIA);
+
+/* ------------------------- MAQUINARIA -------------------------- */
+router.get('/MaquinariaAgricola', obtenerProductosMAQUINARIA);
+router.get('/MaquinariaAgricola', obtenerProductosMAQUINARIA);
+
+
+
+
+/* ------------------------- SUBCATEGORIAS ----------------------- */
 router.get('/BuscarCategoria/:nombre', obtenerSubcategoriasPorNivel);
 
 
