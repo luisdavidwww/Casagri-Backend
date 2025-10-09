@@ -1028,7 +1028,7 @@ const obtenerProductosPorCategoriaNombre  = async (req, res) => {
     }));
 
 
-    const productosFiltrados = productosEnriquecidos;
+    let productosFiltrados = productosEnriquecidos;
 
     if (subcategorias && subcategorias !== "null") {
       const subcategoriasArray = Array.isArray(subcategorias)
@@ -1080,7 +1080,10 @@ const obtenerProductosPorCategoriaNombre  = async (req, res) => {
     // ======================
     // 8. Total de páginas
     // ======================
+    const totalFiltrado = productosFiltrados.length;
     const totalPages = Math.ceil(total / limitNumber);
+    const productosPaginados = productosFiltrados.slice(startIndex, startIndex + limitNumber);
+
 
 
     // ======================
@@ -1088,10 +1091,10 @@ const obtenerProductosPorCategoriaNombre  = async (req, res) => {
     // ======================
     res.status(200).json({
       //categoria: categoria.Nombre,
-      total,
+      total: totalFiltrado,
       totalPages,
       currentPage: pageNumber,
-      productos: productosFiltrados,
+      productos: productosPaginados,
       marcas: marcasArray,
       componentes: componentesArray,
     });
