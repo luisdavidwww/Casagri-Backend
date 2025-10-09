@@ -2,6 +2,158 @@ const axios = require('axios');
 const Producto = require('../models/producto'); // Tu modelo actualizado
 const Categoria = require('../models/Categoria'); // Tu modelo actualizado
 
+
+
+
+const obtenerProductosPorCategoriaNombrewer = async (req, res) => {
+  try {
+    const { page, limit, orderBy, marca, componente } = req.query;
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 16;
+
+    const { nombre, subcategory } = req.params;
+    const subcategoryDecoded = decodeURIComponent(subcategory || "").trim();
+
+    const subcategoriasPermitidas = [
+      "AGROQUIMICOS",
+      "SEMILLAS",
+      "FERTILIZANTES",
+      "EQUIPOS DE FUMIGACIÓN",
+      "SACOS CABULLAS Y CORDELES",
+      "MALLAS Y OTROS PLASTICOS"
+    ];
+
+    let categoria;
+    let tipo = "principal";
+    let subcategorias = [];
+
+    // ======================
+    // 1. Validar categoría principal
+    // ======================
+    if (nombre !== "AGROINDUSTRIAL") {
+      return res.status(404).json({ msg: "Solo se permite la categoría AGROINDUSTRIAL" });
+    }
+
+    // ======================
+    // 2. Buscar categoría válida 
+    // ======================
+    if (subcategoryDecoded !== "") {
+      if (!subcategoriasPermitidas.includes(subcategoryDecoded)) {
+        return res.status(404).json({ msg: "Subcategoría no permitida" });
+      }
+      // 🧪 Caso especial: múltiples categorías
+      else if (subcategoryDecoded === "FERTILIZANTES") {
+          categoria = await Categoria.find({
+          Nombre: { $in: ["FERTILIZANTES QUIMICOS", "FERTILIZANTES Y SUSTRATOS"] }
+        });
+          tipo = "subcategoria";
+      }
+      else if (subcategoryDecoded === "MALLAS Y OTROS PLASTICOS") {
+          categoria = await Categoria.findOne({
+            Nombre: "MALLAS Y PLÁSTICOS DE USOS VAR"
+          });
+          tipo = "subcategoria";
+      }
+      else{
+        categoria = await Categoria.findOne({ Nombre: subcategoryDecoded });
+        tipo = "subcategoria";
+      }
+    } else {
+      categoria = await Categoria.findOne({ Nombre: nombre });
+    }
+
+    if (!categoria) {
+      return res.status(404).json({ msg: "Categoría no encontrada" });
+    }
+
+    const categoriaId = categoria.Id;
+
+    // ======================
+    // 3. Índice inicial
+    const startIndex = (pageNumber - 1) * limitNumber;
+
+    // ======================
+    // 4. Ordenamiento
+    let sorting = { Nombre: 1 };
+    if (orderBy === "desc") sorting = { Nombre: -1 };
+    if (orderBy === "marca") sorting = { Marca: 1 };
+
+    // ======================
+    // 5. Filtros
+    const categoriaFilter = {
+      $or: [
+        { Categorizacion1Id: categoriaId },
+        { Categorizacion2Id: categoriaId },
+        { Categorizacion3Id: categoriaId },
+        { Categorizacion4Id: categoriaId },
+        { Categorizacion5Id: categoriaId },
+      ]
+    };
+
+    const filters = { ...categoriaFilter };
+
+    if (marca && marca !== "si" && marca !== "null") {
+      filters.Marca = marca;
+    }
+    if (marca === "null") {
+      filters.Marca = { $in: [null, ""] };
+    }
+
+    if (componente && componente !== "null") {
+      filters.Etiquetas = componente;
+    }
+    if (componente === "null") {
+      filters.Etiquetas = { $in: [null, 0] };
+    }
+
+    // ======================
+    // 6. Consultas
+    const [total, productos] = await Promise.all([
+      Producto.countDocuments(filters),
+      Producto.find(filters)
+        .select("Id IdApi Codigo Nombre Nombre_interno Descripcion Categorizacion1Id Categorizacion2Id Categorizacion3Id Categorizacion4Id Categorizacion5Id StockActual ImagenUrl Etiquetas Marca")
+        .sort(sorting)
+        .skip(startIndex)
+        .limit(limitNumber)
+    ]);
+
+      const marcas = await Producto.distinct("Marca", categoriaFilter);
+      const componentes = await Producto.distinct("Etiquetas", categoriaFilter);
+
+      const marcasArray = marcas.map((m) => ({ Marca: m }));
+      const componentesArray = componentes.map((c) => ({ Etiquetas: c }));
+      const totalPages = Math.ceil(total / limitNumber);
+
+    // ======================
+    // 7. Subcategorías visibles solo si es principal
+    if (tipo === "principal") {
+      subcategorias = subcategoriasPermitidas.map((s) => ({ Subcategoria: s }));
+    }
+
+    // ======================
+    // 8. Respuesta
+    res.status(200).json({
+      categoria: categoria.Nombre,
+      tipo,
+      total,
+      totalPages,
+      currentPage: pageNumber,
+      productos,
+      marcas: marcasArray,
+      componentes: componentesArray,
+      subcategorias
+    });
+  } catch (error) {
+    console.error("Error al obtener productos por categoría:", error.message);
+    res.status(500).json({ msg: "Error en el servidor" });
+  }
+};
+
+
+
+
+
+
 // Crear todos los productos desde el endpoint externo
 const crearProductosDesdeCasagri = async () => {
   try {
@@ -67,18 +219,21 @@ const crearProductosDesdeCasagri = async () => {
 };
 
 // Obtener productos por nombre de categoría (paginado + filtros)
-const obtenerProductosPorCategoriaNombre= async (req, res) => {
+const obtenerProductosPorCategoriaNombreOLD= async (req, res) => {
   try {
     const { page, limit, orderBy, marca, componente } = req.query;
     const pageNumber = parseInt(page) || 1;
     const limitNumber = parseInt(limit) || 16;
 
-    const { nombre } = req.params; // ej: "MEDICINA VETERINARIA"
+    const { nombre, subcategory } = req.params; // ej: "MEDICINA VETERINARIA"
 
     // ======================
     // 1. Buscar la categoría
     // ======================
-    const categoria = await Categoria.findOne({ Nombre: nombre });
+    //const categoria = await Categoria.findOne({ Nombre: nombre });
+    const categoria = await Categoria.find({
+      Nombre: { $in: [nombre, subcategory] }
+    });
 
     if (!categoria) {
       return res.status(404).json({ msg: "Categoría no encontrada" });
@@ -178,7 +333,39 @@ const obtenerProductosPorCategoriaNombre= async (req, res) => {
     const totalPages = Math.ceil(total / limitNumber);
 
     // ======================
-    // 9. Respuesta
+    // 9. Subcategorías condicionales
+    // ======================
+    let subcategorias = [];
+
+    if (categoria.Nombre === "AGROINDUSTRIAL") {
+      const subcategoriasRaw = [
+        "AGROQUIMICOS",
+        "SEMILLAS",
+        "FERTILIZANTES",
+        "EQUIPOS DE FUMIGACIÓN",
+        "SACOS CABULLAS Y CORDELES",
+        "MALLAS Y OTROS PLASTICOS",
+        //"OTROS"
+      ];
+
+      subcategorias = subcategoriasRaw.map((s) => ({ Subcategoria: s }));
+    }
+
+    if (categoria.Nombre === "MAQUINARIA E IMPLEMENTOS") {
+      const subcategoriasRaw = [
+        "MAQUINARIAS AGRICOLAS",
+        "BOMBAS DE AGUA",
+        "DESMALEZADORAS",
+        "GENERADORES",
+        "MOTOSIERRAS"
+      ];
+
+      subcategorias = subcategoriasRaw.map((s) => ({ Subcategoria: s }));
+    }
+
+
+    // ======================
+    // 10. Respuesta
     // ======================
     res.status(200).json({
       categoria: categoria.Nombre,
@@ -188,11 +375,12 @@ const obtenerProductosPorCategoriaNombre= async (req, res) => {
       productos,
       marcas: marcasArray,
       componentes: componentesArray,
+      subcategorias // ✅ Se incluye solo si tiene contenido, vacío en otros casos
     });
-  } catch (error) {
-    console.error("Error al obtener productos por categoría:", error.message);
-    res.status(500).json({ msg: "Error en el servidor" });
-  }
+    } catch (error) {
+      console.error("Error al obtener productos por categoría:", error.message);
+      res.status(500).json({ msg: "Error en el servidor" });
+    }
 };
 
 /* //////////////////////////////////////////////////////////// */
@@ -438,6 +626,21 @@ const obtenerProductosPECUARIA = async (req, res) => {
     // 6. Total de páginas
     const totalPages = Math.ceil(total / limitNumber);
 
+    // ======================
+    // 9. Subcategorías condicionales
+    // ======================
+    let subcategorias = [];
+
+
+      const subcategoriasRaw = [
+        "MEDICINA VETERINARIA",
+        "IMPLEMENTOS VETERINARIOS",
+        "GANADERIA",
+        "MASCOTAS",
+      ];
+
+    subcategorias = subcategoriasRaw.map((s) => ({ Subcategoria: s }));
+    
     // 7. Respuesta
     res.status(200).json({
       //categorias: categorias.map(cat => ({ Id: cat.Id, Nombre: cat.Nombre })),
@@ -447,6 +650,7 @@ const obtenerProductosPECUARIA = async (req, res) => {
       productos,
       marcas: marcas.map(m => ({ Marca: m })),
       componentes: componentes.map(c => ({ Etiquetas: c })),
+      subcategorias,
     });
   } catch (error) {
     console.error("Error al obtener productos PECUARIA:", error.message);
@@ -641,67 +845,65 @@ const obtenerProductosMAQUINARIA = async (req, res) => {
 /* ------------------------ Buscar Pro ------------------------ */
 /* //////////////////////////////////////////////////////////// */
 /* //////////////////////////////////////////////////////////// */
-const obtenerProductoPorNombre = async(req, res = response ) => {
-
+const obtenerProductoPorNombre = async (req, res) => {
   try {
     const { page, limit } = req.query;
-    const pageNumber = parseInt(page) || 1;
-    const limitNumber = parseInt(limit) || 16;
-
-    // Calcula el índice de inicio y la cantidad de elementos a mostrar
+    const pageNumber = Math.max(parseInt(page) || 1, 1);
+    const limitNumber = Math.max(parseInt(limit) || 16, 1);
     const startIndex = (pageNumber - 1) * limitNumber;
 
-    //let { nombre } = req.params;
+    const { nombre } = req.params;
+    const escapedNombre = nombre
+      .replace(/\s+/g, '-')
+      .replace(/%/g, "%25")
+      .replace(/[ / ]/g, "_");
 
-    let { nombre } = req.params;
+    // 1. Buscar categorías nivel 4 que coincidan con el nombre
+    const categoriasNivel4 = await Categoria.find({
+      Nivel: 4,
+      Nombre: { $regex: nombre, $options: 'i' }
+    });
 
-    // const escapedNombre = nombre.replace(/\s/g, '\\s'); replace(/\s+/g, '-')
-    const escapedNombre = nombre.replace(/\s+/g, '-')
-                                .replace(/%/g, "%25")
-                                .replace(/[ / ]/g, "_");
+    const categoria4Ids = categoriasNivel4.map(cat => cat.Id);
 
+    // 2. Construcción de filtros
     const query = {
       $or: [
         { Nombre_interno: { $regex: escapedNombre, $options: 'i' } },
-        { cat4: { $regex: escapedNombre, $options: 'i' } },
-        { cat1: { $regex: nombre, $options: 'i' } },
-        { cat2: { $regex: nombre, $options: 'i' } },
-        { Cat3: { $regex: nombre, $options: 'i' } },
-        { cat5: { $regex: nombre, $options: 'i' } },
+        ...(categoria4Ids.length > 0 ? [{ Categorizacion4Id: { $in: categoria4Ids } }] : [])
       ]
     };
 
-    const [ total, productos ] = await Promise.all([
-      Producto.find(query).countDocuments(),
+    // 3. Consultas en paralelo
+    const [total, productos] = await Promise.all([
+      Producto.countDocuments(query),
       Producto.find(query)
-                      .select("Id IdApi Codigo Nombre Nombre_interno Descripcion Categorizacion1Id Categorizacion2Id Categorizacion3Id Categorizacion4Id Categorizacion5Id StockActual ImagenUrl Etiquetas Marca")
-                      .sort({ Nombre: 1 }) // Ordena alfabéticamente por el campo "Nombre"
-                      .skip(startIndex)
-                      .limit(limitNumber)
+        .select("Id IdApi Codigo Nombre Nombre_interno Descripcion Categorizacion1Id Categorizacion2Id Categorizacion3Id Categorizacion4Id Categorizacion5Id StockActual ImagenUrl Etiquetas Marca")
+        .sort({ Nombre: 1 })
+        .skip(startIndex)
+        .limit(limitNumber)
     ]);
 
-    // Calcula el número total de páginas
-    const totalPages = Math.ceil(total / limitNumber);
-
-    // Extraer marcas únicas
+    // 4. Marcas únicas
     const marcas = [...new Set(productos.map(p => p.Marca).filter(Boolean))];
 
-    // Construye el objeto de respuesta con los datos paginados y los metadatos
-    const response = {
+    // 5. Total de páginas
+    const totalPages = Math.ceil(total / limitNumber);
+
+    // 6. Respuesta
+    res.status(200).json({
+      success: true,
       total,
       totalPages,
       currentPage: pageNumber,
       productos,
-      marcas,
-    };
-
-    res.status(200).json(response);
+      marcas
+    });
   } catch (error) {
-    console.error('Error al obtener los productos paginados:', error.message);
-    res.status(500).json({ error: 'Error al obtener los productos paginados' });
+    console.error("Error al buscar productos por nombre o categoría nivel 4:", error.message);
+    res.status(500).json({ success: false, msg: "Error en el servidor" });
   }
-
-}
+};
 
 
 
@@ -718,9 +920,9 @@ const obtenerProductoPorNombre = async(req, res = response ) => {
 
 
 // Obtener productos por nombre de categoría (paginado + filtros)
-const obtenerProductosPorCategoriaNombreOld  = async (req, res) => {
+const obtenerProductosPorCategoriaNombre  = async (req, res) => {
   try {
-    const { page, limit, orderBy, marca, componente } = req.query;
+    const { page, limit, orderBy, marca, componente, subcategorias } = req.query;
     const pageNumber = parseInt(page) || 1;
     const limitNumber = parseInt(limit) || 16;
 
@@ -825,6 +1027,28 @@ const obtenerProductosPorCategoriaNombreOld  = async (req, res) => {
       Categorizacion5Nombre: categoriasMap[prod.Categorizacion5Id] || null,
     }));
 
+
+    const productosFiltrados = productosEnriquecidos;
+
+    if (subcategorias && subcategorias !== "null") {
+      const subcategoriasArray = Array.isArray(subcategorias)
+        ? subcategorias
+        : subcategorias.split(",").map(s => s.trim());
+
+      productosFiltrados = productosEnriquecidos.filter(prod =>
+        subcategoriasArray.every(sub =>
+          [
+            prod.Categorizacion1Nombre,
+            prod.Categorizacion2Nombre,
+            prod.Categorizacion3Nombre,
+            prod.Categorizacion4Nombre,
+            prod.Categorizacion5Nombre
+          ].includes(sub)
+        )
+      );
+    }
+
+
     // ======================
     // 6. Distinct marcas
     // ======================
@@ -858,6 +1082,7 @@ const obtenerProductosPorCategoriaNombreOld  = async (req, res) => {
     // ======================
     const totalPages = Math.ceil(total / limitNumber);
 
+
     // ======================
     // 9. Respuesta
     // ======================
@@ -866,7 +1091,7 @@ const obtenerProductosPorCategoriaNombreOld  = async (req, res) => {
       total,
       totalPages,
       currentPage: pageNumber,
-      productos: productosEnriquecidos,
+      productos: productosFiltrados,
       marcas: marcasArray,
       componentes: componentesArray,
     });

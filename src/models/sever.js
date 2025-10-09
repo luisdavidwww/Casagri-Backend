@@ -33,20 +33,10 @@ class Server {
 
   middlewares() {
     // Habilitar CORS
-    this.app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "http://localhost:5173", "http://casagriprueba.casagri-group.com");
-    res.header(
-      "Access-Control-Allow-Headers",
-      "Origin, X-Requested-With, Content-Type, Accept, Authorization"
-    );
-    res.header("Access-Control-Allow-Credentials", "true");
-
-    if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
-    next();
-  });
-
+    this.app.use(cors({
+      origin: ["http://localhost:5173", "http://casagriprueba.casagri-group.com"],
+      credentials: true
+    }));
     // Parsear JSON
     this.app.use(express.json());
   }
