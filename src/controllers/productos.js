@@ -303,6 +303,8 @@ const obtenerProductosPorCategoriaNombre = async (req, res) => {
         "Categorizacion3Id"
       ]);
 
+    //9.6
+    const categoriasNivel3Completas = await obtenerCategoriasNivel3PorCategoriaPrincipal(subcategorias);
 
     // 10. Enviar respuesta al cliente
     res.status(200).json({
@@ -313,7 +315,11 @@ const obtenerProductosPorCategoriaNombre = async (req, res) => {
       marcas: marcas.map(m => ({ Marca: m })),    // Marcas disponibles
       componentes: componentes.map(c => ({ Etiquetas: c })), // Componentes disponibles
       subCategoriasP,
-      categoriasInternas                          // Categorías internas activas
+      //categoriasInternas                          // Categorías internas activas
+      categoriasInternas: {
+        Categorizacion2Id: categoriasMap[categoriaId] ? [{ Id: categoriaId, Nombre: categoriasMap[categoriaId] }] : [],
+        Categorizacion3Id: categoriasNivel3Completas
+      }
     });
   } catch (error) {
     // Si algo falla, devolvemos error 500
@@ -321,6 +327,8 @@ const obtenerProductosPorCategoriaNombre = async (req, res) => {
     res.status(500).json({ msg: "Error en el servidor" });
   }
 };
+
+
 
 
 const obtenerCategoriasInternasPorNivel = async (productos, niveles = []) => {
@@ -357,6 +365,41 @@ const obtenerCategoriasInternasPorNivel = async (productos, niveles = []) => {
   }
 
   return resultado;
+};
+
+
+const obtenerCategoriasNivel3PorCategoriaPrincipal = async (nombreCategoriaPrincipal) => {
+  try {
+    // 1. Buscar la categoría principal por nombre
+    const categoriaPrincipal = await Categoria.findOne({ Nombre: nombreCategoriaPrincipal });
+    if (!categoriaPrincipal) return [];
+
+    const categoriaId = categoriaPrincipal.Id;
+
+    // 2. Buscar productos que tengan esa categoría en cualquier nivel
+    const productos = await Producto.find({
+      $or: Array.from({ length: 5 }, (_, i) => ({
+        [`Categorizacion${i + 1}Id`]: categoriaId
+      }))
+    }).select("Categorizacion3Id");
+
+    // 3. Extraer todos los IDs únicos de Categorizacion3Id
+    const idsNivel3 = [
+      ...new Set(productos.map(p => p.Categorizacion3Id).filter(Boolean))
+    ];
+
+    // 4. Buscar los nombres de esas subcategorías nivel 3
+    const categoriasNivel3 = await Categoria.find({ Id: { $in: idsNivel3 } });
+
+    // 5. Formatear para enviar al frontend
+    return categoriasNivel3.map(cat => ({
+      Id: cat.Id,
+      Nombre: cat.Nombre
+    }));
+  } catch (error) {
+    console.error("Error al obtener categorías nivel 3:", error.message);
+    return [];
+  }
 };
 
 
