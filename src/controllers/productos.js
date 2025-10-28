@@ -13,8 +13,10 @@ const obtenerProductosPorCategoriaNombre = async (req, res) => {
     const limitNumber = parseInt(limit);     // Cantidad de productos por página
     const { nombre } = req.params;           // Nombre de la categoría principal
 
+    const nombreSinAcentos = nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
     // 1. Buscar la categoría principal por nombre
-    const categoria = await Categoria.findOne({ Nombre: nombre });
+    const categoria = await Categoria.findOne({ Nombre: nombreSinAcentos });
     if (!categoria) return res.status(404).json({ msg: "Categoría no encontrada" });
     const categoriaId = categoria.Id; 
 
@@ -134,16 +136,20 @@ const obtenerProductosPorCategoriaNombre = async (req, res) => {
       )
     }));
 
+    // 8. Categorías Permitidas según nombre principal
+      let subCategoriasP = [];
 
-    // 8 Categorias Permitidas
-    const subCategoriasP = [
-      {subcategorias:"AGROQUIMICOS"},
-      {subcategorias:"SEMILLAS"},
-      {subcategorias:"FERTILIZANTES"},
-      {subcategorias:"EQUIPOS DE FUMIGACIÓN"},
-      {subcategorias:"SACOS, CABULLAS Y CORDELES"},
-      {subcategorias:"MALLAS Y OTROS PLASTICOS"},
-    ];
+      if (nombre.toUpperCase() === "AGROINDUSTRIAL") {
+        subCategoriasP = [
+          { subcategorias: "AGROQUIMICOS" },
+          { subcategorias: "SEMILLAS" },
+          { subcategorias: "FERTILIZANTES" },
+          { subcategorias: "EQUIPOS DE FUMIGACIÓN" },
+          { subcategorias: "SACOS, CABULLAS Y CORDELES" },
+          { subcategorias: "MALLAS Y OTROS PLASTICOS" },
+        ];
+      }
+
 
     //9.1
     const categoriasNivel3Completas = await obtenerCategoriasNivel3PorCategoriaPrincipal(subcategorias);
@@ -286,6 +292,8 @@ const obtenerMarcasPorCategoriaPrincipalFlexible = async (subcategorias, nombreF
           return ["MAQUINAS PARA LA SIEMBRA","MAQUINAS PARA EL ABONO Y FERTI", "MAQUINAS PARA LA PROTECCION Y", "MAQUINARIA PARA LA RECOLECCION", "MAQUINARIA PROCESAMIENTO MATER", "IMPLEMENTOS PARA PREPARACION D" ];
         case "BOMBAS DE AGUA":
           return "BOMBAS DE AGUA USO DOMESTICO";
+        case "SALUD PÚBLICA":
+          return "SALUD PUBLICA";
         default:
           return [sub];
       }
