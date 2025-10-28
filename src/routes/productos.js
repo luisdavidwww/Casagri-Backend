@@ -5,6 +5,7 @@ const {
         obtenerProductos,
         obtenerSubcategoriasPorNivel,
         obtenerProductoPorNombre,
+        obtenerProductoPorId,
 
         /* ------------------------- GENERAL ----------------------------- */
         obtenerProductosPorCategoriaNombre, 
@@ -67,7 +68,7 @@ router.get('/BuscarCategoria/:nombre', obtenerSubcategoriasPorNivel);
 
 /* ----------------- BUSCAR PRODUCTO POR NOMBRE  ----------------- */
 router.get('/Buscar/:nombre', obtenerProductoPorNombre );
-
+router.get('/BuscarID/:id', obtenerProductoPorId );
 // Obtener todos los productos
 router.get('/all', obtenerProductos);
 

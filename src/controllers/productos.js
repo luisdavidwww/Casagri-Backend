@@ -325,6 +325,9 @@ const obtenerMarcasPorCategoriaPrincipalFlexible = async (subcategorias, nombreF
       }
     }
 
+    // ✅ Ordenar alfabéticamente
+    marcasUnicas.sort((a, b) => a.Marca.localeCompare(b.Marca));
+
     return marcasUnicas;
   } catch (error) {
     console.error("Error al obtener marcas por categoría:", error.message);
@@ -396,6 +399,9 @@ const obtenerComponentesPorCategoriaPrincipalFlexible = async (subcategorias, no
         componentesUnicos.push({ Id: comp.Id, Nombre: comp.Nombre });
       }
     }
+
+// ✅ Ordenar alfabéticamente por Nombre
+componentesUnicos.sort((a, b) => a.Nombre.localeCompare(b.Nombre));
 
     return componentesUnicos;
   } catch (error) {
@@ -1175,6 +1181,53 @@ const obtenerProductoPorNombre = async (req, res) => {
   }
 };
 
+const obtenerProductoPorId = async (req, res) => {
+  try {
+    const { page, limit } = req.query;
+    const pageNumber = Math.max(parseInt(page) || 1, 1);
+    const limitNumber = Math.max(parseInt(limit) || 16, 1);
+    const startIndex = (pageNumber - 1) * limitNumber;
+
+    const { id } = req.params;
+
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({ success: false, msg: "ID inválido" });
+    }
+
+    // 1. Construcción de filtro por ID
+    const query = { Id: parseInt(id) };
+
+    // 2. Consultas en paralelo
+    const [total, productos] = await Promise.all([
+      Producto.countDocuments(query),
+      Producto.find(query)
+        .select("Id IdApi Codigo Nombre Nombre_interno Descripcion Categorizacion1Id Categorizacion2Id Categorizacion3Id Categorizacion4Id Categorizacion5Id StockActual ImagenUrl Etiquetas Marca")
+        .sort({ Nombre: 1 })
+        .skip(startIndex)
+        .limit(limitNumber)
+    ]);
+
+    // 3. Marcas únicas
+    const marcas = [...new Set(productos.map(p => p.Marca).filter(Boolean))];
+
+    // 4. Total de páginas
+    const totalPages = Math.ceil(total / limitNumber);
+
+    // 5. Respuesta
+    res.status(200).json({
+      success: true,
+      total,
+      totalPages,
+      currentPage: pageNumber,
+      productos,
+      marcas
+    });
+  } catch (error) {
+    console.error("Error al buscar producto por ID:", error.message);
+    res.status(500).json({ success: false, msg: "Error en el servidor" });
+  }
+};
+
 
 
 
@@ -1376,6 +1429,7 @@ module.exports = {
   obtenerProductos,
   obtenerSubcategoriasPorNivel,
   obtenerProductoPorNombre,
+  obtenerProductoPorId,
 
   /* ------------------------- GENERAL ----------------------------- */
   obtenerProductosPorCategoriaNombre, 
