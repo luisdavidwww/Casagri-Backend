@@ -56,7 +56,7 @@ router.get('/Ganaderia', obtenerProductosGANADERIA);
 
 /* ------------------------- MAQUINARIA -------------------------- */
 router.get('/MaquinariaAgricola', obtenerProductosMAQUINARIA);
-router.get('/MaquinariaAgricola', obtenerProductosMAQUINARIA);
+
 
 
 
