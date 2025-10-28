@@ -258,6 +258,8 @@ const obtenerCategoriasNivel3PorCategoriaPrincipal = async (nombreCategoriaPrinc
         categoriasUnicas.push({ Id: cat.Id, Nombre: cat.Nombre });
       }
     }
+    // ✅ Ordenar alfabéticamente por Nombre
+    categoriasUnicas.sort((a, b) => a.Nombre.localeCompare(b.Nombre));
 
     return categoriasUnicas;
   } catch (error) {
