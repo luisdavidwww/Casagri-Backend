@@ -155,7 +155,7 @@ const obtenerProductosPorCategoriaNombre = async (req, res) => {
     const categoriasNivel3Completas = await obtenerCategoriasNivel3PorCategoriaPrincipal(subcategorias);
 
     //9.2
-    const marcasPorCategoria = await obtenerMarcasPorCategoriaPrincipalFlexible(subcategorias, nombre);
+    const marcasPorCategoria = await obtenerMarcasPorCategoriaPrincipalFlexible(nivel3, subcategorias, nombre);
 
     //9.3
     const componentesPorCategoria = await obtenerComponentesPorCategoriaPrincipalFlexible(subcategorias, nombre);
@@ -182,44 +182,6 @@ const obtenerProductosPorCategoriaNombre = async (req, res) => {
     console.error("Error al obtener productos por categoría:", error.message);
     res.status(500).json({ msg: "Error en el servidor" });
   }
-};
-
-
-
-const obtenerCategoriasInternasPorNivel = async (productos, niveles = []) => {
-  const idsPorNivel = {};
-
-  // 1. Recolectar IDs por nivel
-  niveles.forEach(nivel => {
-    idsPorNivel[nivel] = new Set();
-    productos.forEach(prod => {
-      const id = prod[nivel];
-      if (id && id !== 0) idsPorNivel[nivel].add(id);
-    });
-  });
-
-  // 2. Buscar nombres de categorías por nivel
-  const resultado = {};
-  for (const nivel of niveles) {
-    const ids = Array.from(idsPorNivel[nivel]);
-    const categorias = await Categoria.find({ Id: { $in: ids } });
-
-    // 3. Mapear y eliminar duplicados por nombre
-    const sinDuplicados = [];
-    const nombresVistos = new Set();
-
-    categorias.forEach(cat => {
-      if (!nombresVistos.has(cat.Nombre)) {
-        nombresVistos.add(cat.Nombre);
-        sinDuplicados.push({ Id: cat.Id, Nombre: cat.Nombre });
-      }
-    });
-
-    // 4. Ordenar alfabéticamente
-    resultado[nivel] = sinDuplicados.sort((a, b) => a.Nombre.localeCompare(b.Nombre));
-  }
-
-  return resultado;
 };
 
 
@@ -268,12 +230,20 @@ const obtenerCategoriasNivel3PorCategoriaPrincipal = async (nombreCategoriaPrinc
   }
 };
 
-const obtenerMarcasPorCategoriaPrincipalFlexible = async (subcategorias, nombreFallback) => {
+const obtenerMarcasPorCategoriaPrincipalFlexible = async (componente, nivel3, subcategorias, nombreFallback) => {
   try {
     // 1. Determinar qué nombre usar
     let nombresCategoria = [];
 
-    if (Array.isArray(subcategorias)) {
+    if (Array.isArray(nivel3)) {
+      nombresCategoria = nivel3.filter(Boolean).map(s => s.trim());
+    } else if (typeof nivel3 === "string" && nivel3.trim() !== "") {
+      nombresCategoria = [nivel3.trim()];
+    } else if (Array.isArray(componente)) {
+      nombresCategoria = componente.filter(Boolean).map(s => s.trim());
+    } else if (typeof componente === "string" && componente.trim() !== "") {
+      nombresCategoria = [componente.trim()];
+    } else if (Array.isArray(subcategorias)) {
       nombresCategoria = subcategorias.filter(Boolean).map(s => s.trim());
     } else if (typeof subcategorias === "string" && subcategorias.trim() !== "") {
       nombresCategoria = [subcategorias.trim()];
@@ -291,31 +261,37 @@ const obtenerMarcasPorCategoriaPrincipalFlexible = async (subcategorias, nombreF
         case "MALLAS Y OTROS PLASTICOS":
           return ["MALLAS Y PLÁSTICOS DE USOS VAR"];
         case "MAQUINARIA AGRICOLA":
-          return ["MAQUINAS PARA LA SIEMBRA","MAQUINAS PARA EL ABONO Y FERTI", "MAQUINAS PARA LA PROTECCION Y", "MAQUINARIA PARA LA RECOLECCION", "MAQUINARIA PROCESAMIENTO MATER", "IMPLEMENTOS PARA PREPARACION D" ];
+          return [
+            "MAQUINAS PARA LA SIEMBRA",
+            "MAQUINAS PARA EL ABONO Y FERTI",
+            "MAQUINAS PARA LA PROTECCION Y",
+            "MAQUINARIA PARA LA RECOLECCION",
+            "MAQUINARIA PROCESAMIENTO MATER",
+            "IMPLEMENTOS PARA PREPARACION D"
+          ];
         case "BOMBAS DE AGUA":
-          return "BOMBAS DE AGUA USO DOMESTICO";
+          return ["BOMBAS DE AGUA USO DOMESTICO"];
         case "SALUD PÚBLICA":
-          return "SALUD PUBLICA";
+          return ["SALUD PUBLICA"];
         default:
           return [sub];
       }
     });
 
-
-    // 2. Buscar las categorías por nombre
+    // 3. Buscar las categorías por nombre
     const categorias = await Categoria.find({ Nombre: { $in: nombresExpandidos } });
     if (!categorias.length) return [];
 
     const categoriaIds = categorias.map(cat => cat.Id);
 
-    // 3. Buscar productos que tengan esas categorías en cualquier nivel
+    // 4. Buscar productos que tengan esas categorías en cualquier nivel
     const productos = await Producto.find({
       $or: Array.from({ length: 5 }, (_, i) => ({
         [`Categorizacion${i + 1}Id`]: { $in: categoriaIds }
       }))
     }).select("Marca");
 
-    // 4. Extraer marcas únicas (excluyendo nulas o vacías)
+    // 5. Extraer marcas únicas (excluyendo nulas o vacías)
     const marcasUnicas = [];
     const marcasVistas = new Set();
 
@@ -337,18 +313,24 @@ const obtenerMarcasPorCategoriaPrincipalFlexible = async (subcategorias, nombreF
   }
 };
 
-const obtenerComponentesPorCategoriaPrincipalFlexible = async (subcategorias, nombreFallback) => {
+
+const obtenerComponentesPorCategoriaPrincipalFlexible = async (nivel3, subcategorias, nombreFallback) => {
   try {
     // 1. Determinar qué nombre usar
     let nombresCategoria = [];
 
-    if (Array.isArray(subcategorias)) {
+    if (Array.isArray(nivel3)) {
+      nombresCategoria = nivel3.filter(Boolean).map(s => s.trim());
+    } else if (typeof nivel3 === "string" && nivel3.trim() !== "") {
+      nombresCategoria = [nivel3.trim()];
+    } else if (Array.isArray(subcategorias)) {
       nombresCategoria = subcategorias.filter(Boolean).map(s => s.trim());
     } else if (typeof subcategorias === "string" && subcategorias.trim() !== "") {
       nombresCategoria = [subcategorias.trim()];
     } else if (typeof nombreFallback === "string" && nombreFallback.trim() !== "") {
       nombresCategoria = [nombreFallback.trim()];
     }
+
 
     if (!nombresCategoria.length) return [];
 
@@ -410,6 +392,43 @@ componentesUnicos.sort((a, b) => a.Nombre.localeCompare(b.Nombre));
     console.error("Error al obtener componentes por categoría:", error.message);
     return [];
   }
+};
+
+
+const obtenerCategoriasInternasPorNivel = async (productos, niveles = []) => {
+  const idsPorNivel = {};
+
+  // 1. Recolectar IDs por nivel
+  niveles.forEach(nivel => {
+    idsPorNivel[nivel] = new Set();
+    productos.forEach(prod => {
+      const id = prod[nivel];
+      if (id && id !== 0) idsPorNivel[nivel].add(id);
+    });
+  });
+
+  // 2. Buscar nombres de categorías por nivel
+  const resultado = {};
+  for (const nivel of niveles) {
+    const ids = Array.from(idsPorNivel[nivel]);
+    const categorias = await Categoria.find({ Id: { $in: ids } });
+
+    // 3. Mapear y eliminar duplicados por nombre
+    const sinDuplicados = [];
+    const nombresVistos = new Set();
+
+    categorias.forEach(cat => {
+      if (!nombresVistos.has(cat.Nombre)) {
+        nombresVistos.add(cat.Nombre);
+        sinDuplicados.push({ Id: cat.Id, Nombre: cat.Nombre });
+      }
+    });
+
+    // 4. Ordenar alfabéticamente
+    resultado[nivel] = sinDuplicados.sort((a, b) => a.Nombre.localeCompare(b.Nombre));
+  }
+
+  return resultado;
 };
 
 
