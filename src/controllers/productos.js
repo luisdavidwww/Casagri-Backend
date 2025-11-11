@@ -845,7 +845,7 @@ const obtenerProductosPECUARIA = async (req, res) => {
     const categoriasNivel3Completas = await obtenerCategoriasNivel3PorCategoriaPrincipal(subcategorias);
 
     //9.2
-    const marcasPorCategoria = await obtenerMarcasPorCategoriaPrincipalFlexible(subcategorias);
+    const marcasPorCategoria = await obtenerMarcasPorCategoriaPrincipalFlexible(nivel3, subcategorias, componente);
 
     //9.3
     const componentesPorCategoria = await obtenerComponentesPorCategoriaPrincipalFlexible(subcategorias);
