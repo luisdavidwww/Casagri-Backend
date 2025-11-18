@@ -2,6 +2,9 @@ const axios = require('axios');
 const Producto = require('../models/producto'); // Tu modelo actualizado
 const Categoria = require('../models/Categoria'); // Tu modelo actualizado
 
+const cliProgress = require('cli-progress');
+const cron = require('node-cron');
+
 
 
 
@@ -152,13 +155,13 @@ const obtenerProductosPorCategoriaNombre = async (req, res) => {
 
 
     //9.1
-    const categoriasNivel3Completas = await obtenerCategoriasNivel3PorCategoriaPrincipal(subcategorias);
+    const categoriasNivel3Completas = await obtenerCategoriasNivel3PorCategoriaPrincipal(subcategorias, subcategorias, nivel3, componente, marca);
 
     //9.2
-    const marcasPorCategoria = await obtenerMarcasPorCategoriaPrincipalFlexible(nivel3, subcategorias, nombre);
+    const marcasPorCategoria = await obtenerMarcasPorCategoriaPrincipalFlexible(subcategorias, nivel3, componente );
 
     //9.3
-    const componentesPorCategoria = await obtenerComponentesPorCategoriaPrincipalFlexible(subcategorias, nombre);
+    const componentesPorCategoria = await obtenerComponentesPorCategoriaPrincipalFlexible(subcategorias, nivel3, marca );
 
 
     
@@ -185,34 +188,86 @@ const obtenerProductosPorCategoriaNombre = async (req, res) => {
 };
 
 
-const obtenerCategoriasNivel3PorCategoriaPrincipal = async (nombreCategoriaPrincipal) => {
+const obtenerCategoriasNivel3PorCategoriaPrincipal = async (
+  nombreCategoriaPrincipal,
+  subcategorias,
+  nivel3,
+  componente,
+  marca
+) => {
   try {
-    // 1. Buscar la categoría principal por nombre
+    const normalize = (s) =>
+      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
+    const toArray = (v) =>
+      Array.isArray(v) ? v.filter(Boolean).map(normalize)
+      : (typeof v === "string" && v.trim() !== "" ? [normalize(v)] : []);
+
+    // 1. Buscar la categoría principal
     const categoriaPrincipal = await Categoria.findOne({ Nombre: nombreCategoriaPrincipal });
     if (!categoriaPrincipal) return [];
 
     const categoriaId = categoriaPrincipal.Id;
 
-    // 2. Buscar productos que tengan esa categoría en cualquier nivel
-    const productos = await Producto.find({
+    // 2. Construir filtro dinámico
+    const filtro = { $and: [] };
+
+    // 🔹 Categoría principal en cualquier nivel
+    filtro.$and.push({
       $or: Array.from({ length: 5 }, (_, i) => ({
-        [`Categorizacion${i + 1}Id`]: categoriaId
-      }))
-    }).select("Categorizacion3Id");
+        [`Categorizacion${i + 1}Id`]: categoriaId,
+      })),
+    });
 
-    // 3. Extraer todos los IDs únicos de Categorizacion3Id
+    // 🔹 Filtro por nivel3
+    const entradasNivel3 = toArray(nivel3);
+    if (entradasNivel3.length) {
+      const categoriasNivel3 = await Categoria.find({ Nombre: { $in: entradasNivel3 } });
+      const ids = categoriasNivel3.map((c) => c.Id);
+      filtro.$and.push({ Categorizacion3Id: { $in: ids } });
+    }
+
+    // 🔹 Filtro por subcategorias
+    const entradasSub = toArray(subcategorias);
+    if (entradasSub.length) {
+      const categoriasSub = await Categoria.find({ Nombre: { $in: entradasSub } });
+      const ids = categoriasSub.map((c) => c.Id);
+      filtro.$and.push({
+        $or: Array.from({ length: 5 }, (_, i) => ({
+          [`Categorizacion${i + 1}Id`]: { $in: ids },
+        })),
+      });
+    }
+
+    // 🔹 Filtro por componente (nivel 4)
+    const entradasComp = toArray(componente);
+    if (entradasComp.length) {
+      const compDocs = await Categoria.find({ Nombre: { $in: entradasComp } });
+      const compIds = compDocs.map((c) => c.Id);
+      filtro.$and.push({ Categorizacion4Id: { $in: compIds } });
+    }
+
+    // 🔹 Filtro por marca
+    const entradasMarcas = toArray(marca);
+    if (entradasMarcas.length) {
+      filtro.$and.push({ Marca: { $in: entradasMarcas } });
+    }
+
+    // 3. Buscar productos con todos los filtros
+    const productos = await Producto.find(filtro).select("Categorizacion3Id");
+
+    // 4. Extraer IDs únicos de nivel3
     const idsNivel3 = [
-      ...new Set(productos.map(p => p.Categorizacion3Id).filter(Boolean))
+      ...new Set(productos.map((p) => p.Categorizacion3Id).filter(Boolean)),
     ];
-
     if (!idsNivel3.length) return [];
 
-    // 4. Buscar las categorías nivel 3 por ID
+    // 5. Buscar categorías nivel 3 por ID
     const categoriasNivel3 = await Categoria.find({ Id: { $in: idsNivel3 } });
 
-    // 5. Eliminar duplicados por nombre
-    const categoriasUnicas = [];
+    // 6. Eliminar duplicados y ordenar
     const nombresVistos = new Set();
+    const categoriasUnicas = [];
 
     for (const cat of categoriasNivel3) {
       if (!nombresVistos.has(cat.Nombre)) {
@@ -220,7 +275,7 @@ const obtenerCategoriasNivel3PorCategoriaPrincipal = async (nombreCategoriaPrinc
         categoriasUnicas.push({ Id: cat.Id, Nombre: cat.Nombre });
       }
     }
-    // ✅ Ordenar alfabéticamente por Nombre
+
     categoriasUnicas.sort((a, b) => a.Nombre.localeCompare(b.Nombre));
 
     return categoriasUnicas;
@@ -230,7 +285,139 @@ const obtenerCategoriasNivel3PorCategoriaPrincipal = async (nombreCategoriaPrinc
   }
 };
 
-const obtenerMarcasPorCategoriaPrincipalFlexible = async (componente, nivel3, subcategorias, nombreFallback) => {
+
+const obtenerCategoriasNivel3PorCategoriaPrincipalNew = async (
+  nombreCategoriaPrincipal,
+  subcategorias,
+  nivel3,
+  componente,
+  marca
+) => {
+  try {
+    const normalize = (s) =>
+      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
+
+    const toArray = (v) =>
+      Array.isArray(v) ? v.filter(Boolean).map(normalize)
+      : (typeof v === "string" && v.trim() !== "" ? [normalize(v)] : []);
+
+    // 1. Caso especial: FERTILIZANTES
+    const entradasSub = toArray(subcategorias);
+    if (entradasSub.includes("FERTILIZANTES")) {
+      // 👉 No existe "FERTILIZANTES" en BD, devolvemos directamente las dos categorías nivel3
+      return [
+        { Id: null, Nombre: "FERTILIZANTES QUIMICOS" },
+        { Id: null, Nombre: "FERTILIZANTES Y SUSTRATOS" },
+      ];
+    }
+
+    // 2. Buscar la categoría principal
+    const categoriaPrincipal = await Categoria.findOne({ Nombre: nombreCategoriaPrincipal });
+    if (!categoriaPrincipal) return [];
+
+    const categoriaId = categoriaPrincipal.Id;
+
+    // 3. Construir filtro dinámico
+    const filtro = { $and: [] };
+
+    // 🔹 Categoría principal en cualquier nivel
+    filtro.$and.push({
+      $or: Array.from({ length: 5 }, (_, i) => ({
+        [`Categorizacion${i + 1}Id`]: categoriaId,
+      })),
+    });
+
+    // 🔹 Filtro por nivel3
+    const entradasNivel3 = toArray(nivel3);
+    if (entradasNivel3.length) {
+      const categoriasNivel3 = await Categoria.find({ Nombre: { $in: entradasNivel3 } });
+      const ids = categoriasNivel3.map((c) => c.Id);
+      filtro.$and.push({ Categorizacion3Id: { $in: ids } });
+    }
+
+    // 🔹 Filtro por subcategorias (otros casos especiales)
+    const expandirEspeciales = (sub) => {
+      switch (sub) {
+        case "MALLAS Y OTROS PLASTICOS":
+          return ["MALLAS Y PLASTICOS DE USOS VAR"];
+        case "MAQUINARIA AGRICOLA":
+          return [
+            "MAQUINAS PARA LA SIEMBRA",
+            "MAQUINAS PARA EL ABONO Y FERTI",
+            "MAQUINAS PARA LA PROTECCION Y",
+            "MAQUINARIA PARA LA RECOLECCION",
+            "MAQUINARIA PROCESAMIENTO MATER",
+            "IMPLEMENTOS PARA PREPARACION D",
+          ];
+        case "BOMBAS DE AGUA":
+          return ["BOMBAS DE AGUA USO DOMESTICO"];
+        case "SALUD PUBLICA":
+          return ["SALUD PUBLICA"];
+        default:
+          return [sub];
+      }
+    };
+
+    const entradasSubExpandidas = entradasSub.flatMap(expandirEspeciales);
+
+    if (entradasSubExpandidas.length) {
+      const categoriasSub = await Categoria.find({ Nombre: { $in: entradasSubExpandidas } });
+      const ids = categoriasSub.map((c) => c.Id);
+      filtro.$and.push({
+        $or: Array.from({ length: 5 }, (_, i) => ({
+          [`Categorizacion${i + 1}Id`]: { $in: ids },
+        })),
+      });
+    }
+
+    // 🔹 Filtro por componente (nivel 4)
+    const entradasComp = toArray(componente);
+    if (entradasComp.length) {
+      const compDocs = await Categoria.find({ Nombre: { $in: entradasComp } });
+      const compIds = compDocs.map((c) => c.Id);
+      filtro.$and.push({ Categorizacion4Id: { $in: compIds } });
+    }
+
+    // 🔹 Filtro por marca
+    const entradasMarcas = toArray(marca);
+    if (entradasMarcas.length) {
+      filtro.$and.push({ Marca: { $in: entradasMarcas } });
+    }
+
+    // 4. Buscar productos con todos los filtros
+    const productos = await Producto.find(filtro).select("Categorizacion3Id");
+
+    // 5. Extraer IDs únicos de nivel3
+    const idsNivel3 = [
+      ...new Set(productos.map((p) => p.Categorizacion3Id).filter(Boolean)),
+    ];
+    if (!idsNivel3.length) return [];
+
+    // 6. Buscar categorías nivel 3 por ID
+    const categoriasNivel3 = await Categoria.find({ Id: { $in: idsNivel3 } });
+
+    // 7. Eliminar duplicados y ordenar
+    const nombresVistos = new Set();
+    const categoriasUnicas = [];
+
+    for (const cat of categoriasNivel3) {
+      if (!nombresVistos.has(cat.Nombre)) {
+        nombresVistos.add(cat.Nombre);
+        categoriasUnicas.push({ Id: cat.Id, Nombre: cat.Nombre });
+      }
+    }
+
+    categoriasUnicas.sort((a, b) => a.Nombre.localeCompare(b.Nombre));
+
+    return categoriasUnicas;
+  } catch (error) {
+    console.error("Error al obtener categorías nivel 3:", error.message);
+    return [];
+  }
+};
+
+
+const obtenerMarcasPorCategoriaPrincipalFlexible = async (subcategorias, nivel3, componente ) => {
   try {
     // 1. Determinar qué nombre usar
     let nombresCategoria = [];
@@ -247,9 +434,7 @@ const obtenerMarcasPorCategoriaPrincipalFlexible = async (componente, nivel3, su
       nombresCategoria = subcategorias.filter(Boolean).map(s => s.trim());
     } else if (typeof subcategorias === "string" && subcategorias.trim() !== "") {
       nombresCategoria = [subcategorias.trim()];
-    } else if (typeof nombreFallback === "string" && nombreFallback.trim() !== "") {
-      nombresCategoria = [nombreFallback.trim()];
-    }
+    } 
 
     if (!nombresCategoria.length) return [];
 
@@ -314,68 +499,70 @@ const obtenerMarcasPorCategoriaPrincipalFlexible = async (componente, nivel3, su
 };
 
 
-const obtenerComponentesPorCategoriaPrincipalFlexible = async (nivel3, subcategorias, nombreFallback) => {
+const obtenerComponentesPorCategoriaPrincipalFlexible = async (subcategorias, nivel3, marca) => {
   try {
-    // 1. Determinar qué nombre usar
-    let nombresCategoria = [];
+    const normalize = (s) =>
+      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
 
-    if (Array.isArray(nivel3)) {
-      nombresCategoria = nivel3.filter(Boolean).map(s => s.trim());
-    } else if (typeof nivel3 === "string" && nivel3.trim() !== "") {
-      nombresCategoria = [nivel3.trim()];
-    } else if (Array.isArray(subcategorias)) {
-      nombresCategoria = subcategorias.filter(Boolean).map(s => s.trim());
-    } else if (typeof subcategorias === "string" && subcategorias.trim() !== "") {
-      nombresCategoria = [subcategorias.trim()];
-    } else if (typeof nombreFallback === "string" && nombreFallback.trim() !== "") {
-      nombresCategoria = [nombreFallback.trim()];
+    const toArray = (v) =>
+      Array.isArray(v) ? v.filter(Boolean).map(normalize)
+      : (typeof v === "string" && v.trim() !== "" ? [normalize(v)] : []);
+
+    const entradasNivel3 = toArray(nivel3);
+    const entradasSubcategorias = toArray(subcategorias);
+    const entradasMarcas = toArray(marca);
+
+    // 🔹 Lista de subcategorias permitidas
+    const subcategoriasPermitidas = ["AGROQUIMICOS", "MEDICINA VETERINARIA"];
+
+    // Si no hay subcategorias o ninguna está en la lista permitida → devolver vacío
+    if (!entradasSubcategorias.length || !entradasSubcategorias.some(sub => subcategoriasPermitidas.includes(sub))) {
+      return [];
     }
 
+    const filtro = { $and: [] };
 
-    if (!nombresCategoria.length) return [];
+    // 🔹 Filtro por nivel3
+    if (entradasNivel3.length) {
+      const categoriasNivel3 = await Categoria.find({ Nombre: { $in: entradasNivel3 } });
+      const ids = categoriasNivel3.map((c) => c.Id);
+      filtro.$and.push({ Categorizacion3Id: { $in: ids } });
+    }
 
-    // 2. Expandir nombres si hay condiciones especiales
-    const nombresExpandidos = nombresCategoria.flatMap(sub => {
-      switch (sub.toUpperCase()) {
-        case "FERTILIZANTES":
-          return ["FERTILIZANTES QUIMICOS", "FERTILIZANTES Y SUSTRATOS"];
-        case "MALLAS Y OTROS PLASTICOS":
-          return ["MALLAS Y PLÁSTICOS DE USOS VAR"];
-        case "MAQUINARIA AGRICOLA":
-          return ["MAQUINAS PARA LA SIEMBRA","MAQUINAS PARA EL ABONO Y FERTI", "MAQUINAS PARA LA PROTECCION Y", "MAQUINARIA PARA LA RECOLECCION", "MAQUINARIA PROCESAMIENTO MATER", "IMPLEMENTOS PARA PREPARACION D" ];
-        case "BOMBAS DE AGUA":
-          return "BOMBAS DE AGUA USO DOMESTICO";
-        default:
-          return [sub];
-      }
-    });
+    // 🔹 Filtro por subcategorias (solo si están permitidas)
+    if (entradasSubcategorias.length) {
+      const categoriasSub = await Categoria.find({ Nombre: { $in: entradasSubcategorias } });
+      const ids = categoriasSub.map((c) => c.Id);
+      filtro.$and.push({
+        $or: Array.from({ length: 5 }, (_, i) => ({
+          [`Categorizacion${i + 1}Id`]: { $in: ids },
+        })),
+      });
+    }
 
-    // 2. Buscar las categorías por nombre
-    const categorias = await Categoria.find({ Nombre: { $in: nombresExpandidos } });
-    if (!categorias.length) return [];
+    // 🔹 Filtro por marcas
+    if (entradasMarcas.length) {
+      filtro.$and.push({ Marca: { $in: entradasMarcas } });
+    }
 
-    const categoriaIds = categorias.map(cat => cat.Id);
+    if (!filtro.$and.length) return [];
 
-    // 3. Buscar productos que tengan esas categorías en cualquier nivel
-    const productos = await Producto.find({
-      $or: Array.from({ length: 5 }, (_, i) => ({
-        [`Categorizacion${i + 1}Id`]: { $in: categoriaIds }
-      }))
-    }).select("Categorizacion4Id");
+    // 3. Buscar productos con todos los filtros
+    const productos = await Producto.find(filtro).select("Categorizacion4Id");
 
-    // 4. Extraer IDs únicos de componentes (nivel 4)
+    // 4. Extraer IDs únicos de componentes
     const componentesIds = [
-      ...new Set(productos.map(p => p.Categorizacion4Id).filter(id => id && id !== 0))
+      ...new Set(productos.map((p) => p.Categorizacion4Id).filter((id) => id && id !== 0)),
     ];
 
     if (!componentesIds.length) return [];
 
-    // 5. Buscar nombres de componentes por ID
+    // 5. Buscar nombres de componentes
     const componentes = await Categoria.find({ Id: { $in: componentesIds } });
 
-    // 6. Eliminar duplicados por nombre
-    const componentesUnicos = [];
+    // 6. Eliminar duplicados y ordenar
     const nombresVistos = new Set();
+    const componentesUnicos = [];
 
     for (const comp of componentes) {
       if (!nombresVistos.has(comp.Nombre)) {
@@ -384,8 +571,7 @@ const obtenerComponentesPorCategoriaPrincipalFlexible = async (nivel3, subcatego
       }
     }
 
-// ✅ Ordenar alfabéticamente por Nombre
-componentesUnicos.sort((a, b) => a.Nombre.localeCompare(b.Nombre));
+    componentesUnicos.sort((a, b) => a.Nombre.localeCompare(b.Nombre));
 
     return componentesUnicos;
   } catch (error) {
@@ -393,6 +579,8 @@ componentesUnicos.sort((a, b) => a.Nombre.localeCompare(b.Nombre));
     return [];
   }
 };
+
+
 
 
 const obtenerCategoriasInternasPorNivel = async (productos, niveles = []) => {
@@ -464,6 +652,8 @@ const obtenerCategoriasInternasPorNivel = async (productos, niveles = []) => {
 // Crear todos los productos desde el endpoint externo
 const crearProductosDesdeCasagri = async () => {
   try {
+    console.log('🔄 Iniciando sincronización de productos desde Casagri...');
+
     // Hacer la petición al API externo
     const response = await axios.get('https://casagri.app/api/AppSalesProducto', {
       headers: {
@@ -476,54 +666,86 @@ const crearProductosDesdeCasagri = async () => {
       },
     });
 
-    // Obtener solo la lista de productos
     const productosAPI = response.data.Productos;
 
     if (!Array.isArray(productosAPI)) {
-      console.error('No se recibieron productos en la respuesta.');
+      console.error('❌ No se recibieron productos en la respuesta.');
       return;
     }
 
-    const productos = productosAPI.map((item) => ({
-      counter: item.Id,
-      Id: item.Id,
-      IdApi: item.IdAPI,
-      Codigo: item.Codigo,
-      CodigoFabricante: item.CodigoFabricante,
-      CodigoEAN: item.CodigoEAN,
-      Nombre: item.Nombre,
-      Nombre_interno: item.Nombre.replace(/\s+/g, '-').replace(/%/g, '%25').replace(/[ /]/g, '_'),
-      Descripcion: item.Descripcion || '',
-      Categorizacion1Id: item.Categorizacion1Id,
-      Categorizacion2Id: item.Categorizacion2Id,
-      Categorizacion3Id: item.Categorizacion3Id,
-      Categorizacion4Id: item.Categorizacion4Id,
-      Categorizacion5Id: item.Categorizacion5Id,
-      Peso: item.Peso,
-      ManejaStock: item.ManejaStock,
-      StockActual: item.StockActual || 0,
-      StockMinimo: item.StockMinimo || 0,
-      ManejaSuperficie: item.ManejaSuperficie,
-      CantidadPermiteDecimales: item.CantidadPermiteDecimales,
-      UnidadesPorEnvase: item.UnidadesPorEnvase,
-      UnidadesPorPedido: item.UnidadesPorPedido,
-      UnidadesMinimaVenta: item.UnidadesMinimaVenta,
-      ImagenUrl: item.ImagenUrl,
-      Etiquetas: item.Etiquetas,
-      Marca: item.Marca,
-      Publicado: item.Publicado,
-      Descuento: item.Descuento,
-      UnidadDeMedida: item.UnidadDeMedida || {},
-    }));
+    // Crear barra de progreso
+    const bar = new cliProgress.SingleBar({
+      format: 'Sincronizando [{bar}] {percentage}% | {value}/{total} productos',
+      hideCursor: true
+    }, cliProgress.Presets.shades_classic);
 
-    // Guardar en MongoDB
-    await Producto.insertMany(productos);
+    bar.start(productosAPI.length, 0);
 
-    console.log('Productos guardados en la base de datos ✅');
+    // Recorrer y hacer upsert por cada producto
+    for (let i = 0; i < productosAPI.length; i++) {
+      const item = productosAPI[i];
+
+      const producto = {
+        counter: item.Id,
+        Id: item.Id,
+        IdApi: item.IdAPI,
+        Codigo: item.Codigo,
+        CodigoFabricante: item.CodigoFabricante,
+        CodigoEAN: item.CodigoEAN,
+        Nombre: item.Nombre,
+        Nombre_interno: item.Nombre.replace(/\s+/g, '-')
+                                   .replace(/%/g, '%25')
+                                   .replace(/[ /]/g, '_'),
+        Descripcion: item.Descripcion || '',
+        Categorizacion1Id: item.Categorizacion1Id,
+        Categorizacion2Id: item.Categorizacion2Id,
+        Categorizacion3Id: item.Categorizacion3Id,
+        Categorizacion4Id: item.Categorizacion4Id,
+        Categorizacion5Id: item.Categorizacion5Id,
+        Peso: item.Peso,
+        ManejaStock: item.ManejaStock,
+        StockActual: item.StockActual || 0,
+        StockMinimo: item.StockMinimo || 0,
+        ManejaSuperficie: item.ManejaSuperficie,
+        CantidadPermiteDecimales: item.CantidadPermiteDecimales,
+        UnidadesPorEnvase: item.UnidadesPorEnvase,
+        UnidadesPorPedido: item.UnidadesPorPedido,
+        UnidadesMinimaVenta: item.UnidadesMinimaVenta,
+        ImagenUrl: item.ImagenUrl,
+        Etiquetas: item.Etiquetas,
+        Marca: item.Marca,
+        Publicado: item.Publicado,
+        Descuento: item.Descuento,
+        UnidadDeMedida: item.UnidadDeMedida || {},
+      };
+
+      // Upsert: actualiza si existe, inserta si no
+      await Producto.updateOne(
+        { Id: producto.Id },
+        { $set: producto },
+        { upsert: true }
+      );
+
+      // Actualizar barra
+      bar.update(i + 1);
+    }
+
+    bar.stop();
+    console.log('✅ Productos sincronizados en la base de datos');
   } catch (error) {
-    console.error('Error al obtener o guardar productos:', error.message);
+    console.error('❌ Error al obtener o guardar productos:', error.message);
   }
 };
+
+// Programar ejecución cada 6 horas (00:00, 06:00, 12:00, 18:00)
+cron.schedule('0 */6 * * *', async () => {
+  await crearProductosDesdeCasagri();
+});
+
+
+
+
+
 
 
 /* //////////////////////////////////////////////////////////// */
@@ -534,84 +756,170 @@ const crearProductosDesdeCasagri = async () => {
 // FERTILIZANTES
 const obtenerProductosFERTILIZANTES = async (req, res) => {
   try {
-    const { page, limit, orderBy, marca, componente } = req.query;
-    const pageNumber = parseInt(page) || 1;
-    const limitNumber = parseInt(limit) || 16;
-    const startIndex = (pageNumber - 1) * limitNumber;
+    const {
+      page = 1,
+      limit = 15,
+      orderBy,
+      marca,
+      componente,
+      subcategorias,
+      nivel3
+    } = req.query;
 
-    // 1. Buscar categorías relevantes
-    const categorias = await Categoria.find({
+    const pageNumber = parseInt(page);
+    const limitNumber = parseInt(limit);
+
+    // 1. Buscar categorías principales
+    const categoriasPrincipales = await Categoria.find({
       Nombre: { $in: ["FERTILIZANTES QUIMICOS", "FERTILIZANTES Y SUSTRATOS"] }
     });
-    
-
-    if (!categorias || categorias.length === 0) {
-      return res.status(404).json({ msg: "Categorías no encontradas" });
+    if (!categoriasPrincipales.length) {
+      return res.status(404).json({ msg: "Categorías principales no encontradas" });
     }
+    const categoriaIds = categoriasPrincipales.map(cat => cat.Id);
 
-    const categoriaIds = categorias.map(cat => cat.Id);
-
-    // 2. Construcción de filtros
-    const filters = {
-      $or: [
-        { Categorizacion1Id: { $in: categoriaIds } },
-        { Categorizacion2Id: { $in: categoriaIds } },
-        { Categorizacion3Id: { $in: categoriaIds } },
-        { Categorizacion4Id: { $in: categoriaIds } },
-        { Categorizacion5Id: { $in: categoriaIds } },
-      ],
+    // 2. Filtro base: productos que tengan alguna de las categorías principales en cualquier nivel
+    const baseFilter = {
+      $or: Array.from({ length: 5 }, (_, i) => ({
+        [`Categorizacion${i + 1}Id`]: { $in: categoriaIds }
+      }))
     };
 
-    if (marca && marca !== "si" && marca !== "null") {
-      filters.Marca = marca;
-    }
-    if (marca === "null") {
-      filters.Marca = { $in: [null, ""] };
+    // 3. Filtro por marca
+    if (marca && marca !== "si") {
+      baseFilter.Marca = marca === "null" ? { $in: [null, ""] } : marca;
     }
 
+    // 4.  Aplicar filtro por componente si se especifica (usando Categorizacion4Id como referencia)
     if (componente && componente !== "null") {
-      filters.Etiquetas = componente;
-    }
-    if (componente === "null") {
-      filters.Etiquetas = { $in: [null, 0] };
+      // Buscar el ID del componente por su nombre
+      const componenteDoc = await Categoria.findOne({ Nombre: componente.trim() });
+      if (componenteDoc) {
+        baseFilter.Categorizacion4Id = componenteDoc.Id;
+      } else {
+        // Si no se encuentra el componente, forzar un filtro que no devuelva resultados
+        baseFilter.Categorizacion4Id = -999999; // ID inexistente
+      }
+    } else if (componente === "null") {
+      baseFilter.Categorizacion4Id = { $in: [null, 0] }; // Componente vacío o nulo
     }
 
-    // 3. Ordenamiento dinámico
+
+    // 5. Filtro por subcategorías
+    if (subcategorias && subcategorias !== "null") {
+      const subcategoriasArray = Array.isArray(subcategorias)
+        ? subcategorias
+        : [subcategorias.trim()];
+
+      const subcategoriasExpandidas = subcategoriasArray.flatMap(sub => {
+        switch (sub.toUpperCase()) {
+          case "FERTILIZANTES":
+            return ["FERTILIZANTES QUIMICOS", "FERTILIZANTES Y SUSTRATOS"];
+          case "MALLAS Y OTROS PLASTICOS":
+            return "MALLAS Y PLÁSTICOS DE USOS VAR";
+          default:
+            return [sub];
+        }
+      });
+
+      const subcategoriasDocs = await Categoria.find({
+        Nombre: { $in: subcategoriasExpandidas }
+      });
+      const subcategoriasIds = subcategoriasDocs.map(cat => cat.Id);
+
+      baseFilter.$and = baseFilter.$and || [];
+      baseFilter.$and.push({
+        $or: Array.from({ length: 5 }, (_, i) => ({
+          [`Categorizacion${i + 1}Id`]: { $in: subcategoriasIds }
+        }))
+      });
+    }
+
+    // 6. Filtro por nivel3
+    if (nivel3 && nivel3 !== "null") {
+      const nivel3Array = Array.isArray(nivel3) ? nivel3 : [nivel3.trim()];
+      const nivel3Docs = await Categoria.find({ Nombre: { $in: nivel3Array } });
+      const nivel3Ids = nivel3Docs.map(cat => cat.Id);
+
+      baseFilter.$and = baseFilter.$and || [];
+      baseFilter.$and.push({ Categorizacion3Id: { $in: nivel3Ids } });
+    }
+
+    // 7. Ordenamiento
     let sorting = { Nombre: 1 };
     if (orderBy === "desc") sorting = { Nombre: -1 };
     if (orderBy === "marca") sorting = { Marca: 1 };
 
-    // 4. Consultas en paralelo
+    // 8. Consulta paginada
     const [total, productos] = await Promise.all([
-      Producto.countDocuments(filters),
-      Producto.find(filters)
+      Producto.countDocuments(baseFilter),
+      Producto.find(baseFilter)
         .select("Id IdApi Codigo Nombre Nombre_interno Descripcion Categorizacion1Id Categorizacion2Id Categorizacion3Id Categorizacion4Id Categorizacion5Id StockActual ImagenUrl Etiquetas Marca")
         .sort(sorting)
-        .skip(startIndex)
+        .skip((pageNumber - 1) * limitNumber)
         .limit(limitNumber)
     ]);
 
-    // 5. Marcas y componentes
-    const marcas = await Producto.distinct("Marca", { $or: filters.$or });
-    const componentes = await Producto.distinct("Etiquetas", { $or: filters.$or });
+    // 9. Enriquecer productos con nombres de sus categorías
+    const categoriaIdsSet = new Set();
+    productos.forEach(prod => {
+      // Recolectamos todos los IDs de categorizaciones presentes en cada producto
+      [1, 2, 3, 4, 5].forEach(i => {
+        const id = prod[`Categorizacion${i}Id`];
+        if (id && id !== 0) categoriaIdsSet.add(id);
+      });
+    });
 
-    // 6. Total de páginas
-    const totalPages = Math.ceil(total / limitNumber);
+    // Buscar los nombres de esas categorías
+    const categoriasRelacionadas = await Categoria.find({ Id: { $in: Array.from(categoriaIdsSet) } });
+    const categoriasMap = Object.fromEntries(categoriasRelacionadas.map(cat => [cat.Id, cat.Nombre]));
 
-    // 7. Respuesta
+    // Agregar los nombres de las categorizaciones al producto
+    const productosEnriquecidos = productos.map(prod => ({
+      ...prod._doc,
+      ...Object.fromEntries(
+        [1, 2, 3, 4, 5].map(i => [`Categorizacion${i}Nombre`, categoriasMap[prod[`Categorizacion${i}Id`]] || null])
+      )
+    }));
+
+
+    // 11. Subcategorías permitidas
+    const subCategoriasP = [
+      { subcategorias: "MEDICINA VETERINARIA" },
+      { subcategorias: "IMPLEMENTOS VETERINARIOS" },
+      { subcategorias: "GANADERIA" },
+      { subcategorias: "MASCOTAS" }
+    ];
+
+    
+    //9.1
+    const categoriasNivel3Completas = await obtenerCategoriasNivel3PorCategoriaPrincipal(subcategorias, subcategorias, nivel3, componente, marca);
+
+    //9.2
+    const marcasPorCategoria = await obtenerMarcasPorCategoriaPrincipalFlexible(subcategorias, nivel3, componente );
+
+    //9.3
+    const componentesPorCategoria = await obtenerComponentesPorCategoriaPrincipalFlexible(subcategorias, nivel3, marca );
+
+    // 14. Respuesta
     res.status(200).json({
-      //categorias: categorias.map(cat => ({ Id: cat.Id, Nombre: cat.Nombre })),
       total,
-      totalPages,
+      totalPages: Math.ceil(total / limitNumber),
       currentPage: pageNumber,
-      productos,
-      marcas: marcas.map(m => ({ Marca: m })),
-      componentes: componentes.map(c => ({ Etiquetas: c })),
+      productos: productosEnriquecidos,
+      marcas: marcasPorCategoria,                 // Marcas disponibles
+      componentes: componentesPorCategoria,       // Componentes disponibles
+      subCategoriasP,
+      categoriasInternas: {
+        Categorizacion2Id: categoriasMap[categoriaIds] ? [{ Id: categoriaIds, Nombre: categoriasMap[categoriaIds] }] : [],
+        Categorizacion3Id: categoriasNivel3Completas
+      }
     });
   } catch (error) {
     console.error("Error al obtener productos PECUARIA:", error.message);
     res.status(500).json({ msg: "Error en el servidor" });
   }
+    
 };
 // OTROSAGRO
 const obtenerProductosOTROSAGRO = async (req, res) => {
@@ -842,14 +1150,13 @@ const obtenerProductosPECUARIA = async (req, res) => {
 
     
     //9.1
-    const categoriasNivel3Completas = await obtenerCategoriasNivel3PorCategoriaPrincipal(subcategorias);
+    const categoriasNivel3Completas = await obtenerCategoriasNivel3PorCategoriaPrincipal(subcategorias, subcategorias, nivel3, componente, marca);
 
     //9.2
-    const marcasPorCategoria = await obtenerMarcasPorCategoriaPrincipalFlexible(nivel3, subcategorias, componente);
+    const marcasPorCategoria = await obtenerMarcasPorCategoriaPrincipalFlexible(subcategorias, nivel3, componente );
 
     //9.3
-    const componentesPorCategoria = await obtenerComponentesPorCategoriaPrincipalFlexible(subcategorias);
-
+    const componentesPorCategoria = await obtenerComponentesPorCategoriaPrincipalFlexible(subcategorias, nivel3, marca );
 
     // 14. Respuesta
     res.status(200).json({
